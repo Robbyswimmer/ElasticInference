@@ -1,0 +1,81 @@
+Elastic & Auto-Tuned LLM Inference on Kubernetes
+Abstract
+Large-scale LLM inference in the cloud is typically implemented as a multi-stage pipeline, including request admission and preprocessing, prefill, decode, and optional MoE expert routing and computing. Real-world workloads exhibit strong burstiness and stage-level imbalance: prefill is primarily throughput-oriented, decode is latency- and tail-sensitive, and different experts may experience highly skewed workloads. As a result, static resource provisioning often leads to either GPU underutilization or SLA violations.
+This project aims to build a prototype LLM inference system running on Kubernetes, with the following objectives:
+Decompose LLM inference into independently scalable components (prefill, decode, gateway, and experts);
+Design elastic scaling policies tailored for inference workloads, including metric selection, controller design, oscillation avoidance, and checkpointing support;
+Introduce serving-time autotuning, which dynamically selects better configurations under varying GPU resource allocations (GPU slices) and runtime parameters such as micro-batch size, concurrency, and the prefill/decode ratio;
+Conduct reproducible experimental evaluation under limited GPU resources (2–3 servers with 2×V100S GPUs each).
+Insights from Slice-Tune
+Slice-Tune provides several key insights that motivate this project:
+Knee GPU%: Inference latency decreases as GPU allocation increases, but only up to a certain point, beyond which marginal benefits diminish. The most cost-effective allocation is often a “just-enough” GPU share near this knee point.
+Strong coupling between tuning GPU% and inference GPU%: When GPU allocations during inference vary (e.g., due to Kubernetes elastic scaling or GPU spatial slicing), configurations tuned offline at 100% GPU are not necessarily optimal under lower GPU allocations. Tuning near the knee region yields configurations that are more robust to GPU% variations.
+In Kubernetes environments, GPU spatial slicing (GPU%) enables parallelization and higher utilization, but requires careful scheduling to avoid oversubscription and service degradation.
+Problem Statement
+Deploying LLM inference pipelines on Kubernetes introduces several coupled challenges:
+Stage imbalance: Prefill is throughput-oriented while decode is latency-sensitive. As workload characteristics change over time, different stages become bottlenecks at different moments.
+Dynamic resource allocation: The number of GPU pods and the GPU slice (GPU%) assigned to each pod may change due to elastic scaling, leading to time-varying performance behavior.
+Lack of inference-time adaptive tuning: Even for a fixed model, parameters such as micro-batching, concurrency, the prefill/decode ratio, and KV cache policies should adapt to changing workload and resource conditions.
+Goals
+G1: Implement a runnable LLM inference prototype on Kubernetes.
+G2: Design an elastic scaling controller that independently scales prefill, decode, and (in MoE settings) expert components, while minimizing oscillations and supporting checkpointing.
+G3: Implement serving-time autotuning to automatically select better configurations across different GPU slices and runtime parameters, improving both SLA metrics (p95/p99 latency) and GPU utilization.
+G4: Conduct reproducible experiments under constrained GPU resources, with clearly defined workloads, metrics, baselines, and ablation studies.
+System Design
+Component Decomposition
+Gateway / Router (CPU)
+Receives incoming requests, performs lightweight preprocessing and tokenization, and routes requests to prefill or decode stages.
+Maintains per-stage queues and metrics such as queue length, arrival rate, deadlines, and token counts.
+Prefill Workers (GPU, Pods)
+Perform prompt prefill and generate KV caches.
+Output KV cache handles and first-token logits, or store KV caches in shared memory, host memory, or a simple key–value store (e.g., Redis) depending on implementation constraints.
+Decode Workers (GPU, Pods)
+Perform autoregressive decoding using KV caches.
+Highly SLA-sensitive and typically require more aggressive scaling and tuning.
+MoE Expert Service (GPU or CPU-simulated)
+Option 1: Use a non-MoE model but simulate varying expert computation ratios inside the decode worker by inserting controllable FFN or matrix-multiplication workloads.
+Option 2: Use a small MoE model and encapsulate decoder expert computation as a separate service, routing a subset of tokens to demonstrate independently scalable expert subsystems.
+Key Mechanisms
+Elastic Scaling
+A custom scaling controller (e.g., based on KEDA/HPA with custom metrics) independently scales each worker type.
+Candidate metrics include:
+Queue backlog: prefill and decode queue lengths
+Request latency percentiles
+Token throughput: tokens/s
+Approximate GPU utilization / SM occupancy
+Iteration time / service time: average processing time per stage
+Arrival rate
+Deadline
+Control strategy:
+A two-level control loop:
+Outer loop determines the number of replicas per worker type;
+Inner loop determines GPU slice (GPU%) and runtime parameters per replica (see Autotuning part).
+Anti-oscillation mechanisms such as cooldown periods, EMA smoothing, fast scale-up and slow scale-down.
+GPU Slicing and Kubernetes Orchestration
+Multiple inference pods can share a single physical GPU, with each pod assigned a specific GPU slice (GPU%), implemented via CUDA MPS active thread percentage or equivalent mechanisms.
+Under increasing load, the system may either add more pods or slice GPUs more finely to increase pod-level concurrency, especially for throughput-oriented stages.
+Serving-Time Autotuning
+Slice-Tune highlights that tuning must match the GPU resources available during inference; configurations tuned at 100% GPU may perform poorly under reduced GPU allocations.
+Therefore, when elastic scaling in Kubernetes changes the GPU slice assigned to each pod, the system must automatically switch to or reselect more suitable runtime configurations (e.g., micro-batch size, concurrency). Otherwise, performance can degrade due to mismatched resource assumptions.
+Core approach: Knee Profiling + Online Selection
+Step A: Perform knee profiling for each stage (prefill and decode) by measuring latency and throughput across different GPU allocations (e.g., 10%–100%). Slice-Tune shows that knee profiling incurs modest overhead and provides critical guidance for resource matching.
+Step B: Construct a configuration space:
+Resource dimension: GPU% ∈ {25, 50, 75, 100} (adjustable based on hardware and concurrency)
+Runtime dimension: micro-batch size, maximum concurrency, prefill/decode ratio, and optionally KV cache policies
+Step C: Apply online autotuning to select configurations dynamically at runtime.
+Evaluation Plan
+Topology
+3 servers, each equipped with 2×V100S GPUs
+Each server runs a Kubernetes worker node (or k3s), forming a 2–3 node cluster.
+Workloads
+Synthetic workloads with Poisson arrivals and bursty traffic, mixed short and long prompt lengths, and short-to-long-tailed decode lengths.
+Metrics
+SLA metrics: p50/p95/p99 latency (per-stage and end-to-end)
+Throughput: tokens/s and requests/s
+Efficiency: GPU utilization and GPU-seconds per request
+Scaling stability: number of scaling events, oscillation frequency, and convergence time
+Baselines
+Static provisioning (fixed replicas and fixed GPU%)
+Elastic scaling without autotuning
+Elastic scaling with autotuning
+
