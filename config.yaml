@@ -1,0 +1,60 @@
+model:
+  name: facebook/opt-1.3b
+  dtype: float16
+  max_seq_len: 2048
+  device: cuda
+
+gateway:
+  host: 0.0.0.0
+  port: 50051
+  max_queue_size: 256
+  request_timeout_ms: 30000
+
+prefill:
+  host: 0.0.0.0
+  port: 50052
+  batch_size: 8
+  max_concurrent: 4
+
+decode:
+  host: 0.0.0.0
+  port: 50053
+  max_batch_size: 32
+  max_new_tokens: 512
+
+redis:
+  host: localhost
+  port: 6379
+  db: 0
+  ttl_seconds: 300
+  max_connections: 20
+
+scaling:
+  metrics_interval: 5
+  cooldown: 30
+  ema_alpha: 0.3
+  prefill:
+    min_replicas: 1
+    max_replicas: 4
+    scale_up_threshold: 0.8
+    scale_down_threshold: 0.3
+  decode:
+    min_replicas: 1
+    max_replicas: 8
+    scale_up_threshold: 0.8
+    scale_down_threshold: 0.3
+
+autotune:
+  enabled: false
+  gpu_percentages: [25, 50, 75]
+  config_space:
+    prefill_batch_size: [1, 2, 4, 8, 16]
+    decode_batch_size: [4, 8, 16, 32, 64]
+
+logging:
+  level: INFO
+  format: "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+
+prometheus:
+  enabled: true
+  port: 9090
