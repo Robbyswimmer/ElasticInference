@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scaling-controller
+  namespace: llm-inference
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: scaling-controller
+  template:
+    metadata:
+      labels:
+        app: scaling-controller
+    spec:
+      serviceAccountName: scaling-controller
+      containers:
+        - name: controller
+          image: llm-inference/controller:latest
+          imagePullPolicy: Never
+          env:
+            - name: REDIS_HOST
+              value: "redis"
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: scaling-controller
+  namespace: llm-inference
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: scaling-controller
+  namespace: llm-inference
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments", "deployments/scale"]
+    verbs: ["get", "list", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: scaling-controller
+  namespace: llm-inference
+subjects:
+  - kind: ServiceAccount
+    name: scaling-controller
+roleRef:
+  kind: Role
+  name: scaling-controller
+  apiGroup: rbac.authorization.k8s.io

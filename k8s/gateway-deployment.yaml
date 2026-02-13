@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+  namespace: llm-inference
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gateway
+  template:
+    metadata:
+      labels:
+        app: gateway
+    spec:
+      containers:
+        - name: gateway
+          image: llm-inference/gateway:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 50051
+              name: grpc
+            - containerPort: 9090
+              name: metrics
+          env:
+            - name: REDIS_HOST
+              value: "redis"
+            - name: PREFILL_PORT
+              value: "50052"
+            - name: DECODE_PORT
+              value: "50053"
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "2Gi"
+            limits:
+              cpu: "2"
+              memory: "4Gi"

@@ -1,0 +1,39 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: prefill-scaledobject
+  namespace: llm-inference
+spec:
+  scaleTargetRef:
+    name: prefill
+  pollingInterval: 5
+  cooldownPeriod: 30
+  minReplicaCount: 1
+  maxReplicaCount: 4
+  triggers:
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus.llm-inference.svc:9090
+        metricName: prefill_active_requests
+        query: avg(gateway_prefill_queue_length)
+        threshold: "3"
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: decode-scaledobject
+  namespace: llm-inference
+spec:
+  scaleTargetRef:
+    name: decode
+  pollingInterval: 5
+  cooldownPeriod: 30
+  minReplicaCount: 1
+  maxReplicaCount: 8
+  triggers:
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus.llm-inference.svc:9090
+        metricName: decode_active_requests
+        query: avg(gateway_decode_queue_length)
+        threshold: "8"

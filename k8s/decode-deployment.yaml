@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: decode
+  namespace: llm-inference
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: decode
+  template:
+    metadata:
+      labels:
+        app: decode
+    spec:
+      containers:
+        - name: decode
+          image: llm-inference/worker:latest
+          imagePullPolicy: Never
+          command: ["python3", "-m", "workers.decode"]
+          ports:
+            - containerPort: 50053
+              name: grpc
+          env:
+            - name: REDIS_HOST
+              value: "redis"
+          resources:
+            requests:
+              cpu: "1"
+              memory: "4Gi"
+              nvidia.com/gpu: "1"
+            limits:
+              cpu: "4"
+              memory: "8Gi"
+              nvidia.com/gpu: "1"
