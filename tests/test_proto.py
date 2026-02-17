@@ -1,11 +1,5 @@
 """Tests for protobuf message contracts."""
-import os
-import sys
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "common", "proto"))
-
-import inference_pb2
-import inference_pb2_grpc
+from common.proto import inference_pb2, inference_pb2_grpc
 
 
 class TestSamplingParams:

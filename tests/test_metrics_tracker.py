@@ -1,9 +1,9 @@
-"""Tests for the _MetricsTracker used in workers."""
+"""Tests for the shared MetricsTracker."""
 import time
 import threading
 import pytest
 
-from workers.prefill import _MetricsTracker
+from common.metrics import MetricsTracker as _MetricsTracker
 
 
 class TestMetricsTracker:

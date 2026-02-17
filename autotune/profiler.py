@@ -1,16 +1,10 @@
-import os
-import sys
 import time
 import logging
 
 import grpc
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "common", "proto"))
-
-import inference_pb2
-import inference_pb2_grpc
-
 from common import load_config
+from common.proto import inference_pb2, inference_pb2_grpc
 from common.gpu_utils import set_cuda_mps_percentage
 
 logger = logging.getLogger(__name__)

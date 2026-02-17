@@ -1,18 +1,11 @@
-import os
-import sys
 import time
 import logging
 import subprocess
 
 import grpc
 
-# Allow importing generated proto stubs
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "common", "proto"))
-
-import inference_pb2
-import inference_pb2_grpc
-
 from common import load_config
+from common.proto import inference_pb2, inference_pb2_grpc
 
 logger = logging.getLogger(__name__)
 

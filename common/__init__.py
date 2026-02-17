@@ -28,7 +28,9 @@ def load_config(path=None):
         "MODEL_NAME":   ("model", "name"),
         "LOG_LEVEL":    ("logging", "level"),
         "GATEWAY_PORT": ("gateway", "port", int),
+        "PREFILL_HOST": ("prefill", "connect_host"),
         "PREFILL_PORT": ("prefill", "port", int),
+        "DECODE_HOST":  ("decode", "connect_host"),
         "DECODE_PORT":  ("decode", "port", int),
     }
 

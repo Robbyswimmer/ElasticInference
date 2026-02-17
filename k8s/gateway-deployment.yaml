@@ -25,8 +25,12 @@ spec:
           env:
             - name: REDIS_HOST
               value: "redis"
+            - name: PREFILL_HOST
+              value: "prefill"
             - name: PREFILL_PORT
               value: "50052"
+            - name: DECODE_HOST
+              value: "decode"
             - name: DECODE_PORT
               value: "50053"
           resources:

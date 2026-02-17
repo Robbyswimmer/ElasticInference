@@ -1,5 +1,3 @@
-import os
-import sys
 import time
 import uuid
 import logging
@@ -9,15 +7,30 @@ from concurrent import futures
 import grpc
 from transformers import AutoTokenizer
 
-# Allow importing generated proto stubs
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "common", "proto"))
-
-import inference_pb2
-import inference_pb2_grpc
-
 from common import load_config
+from common.proto import inference_pb2, inference_pb2_grpc
 
 logger = logging.getLogger(__name__)
+
+# gRPC channel options for resilient connections
+_CHANNEL_OPTIONS = [
+    ("grpc.keepalive_time_ms", 10000),
+    ("grpc.keepalive_timeout_ms", 5000),
+    ("grpc.keepalive_permit_without_calls", True),
+    ("grpc.http2.max_pings_without_data", 0),
+    ("grpc.initial_reconnect_backoff_ms", 500),
+    ("grpc.max_reconnect_backoff_ms", 5000),
+]
+
+
+def _wait_for_channel(channel, target, timeout=30):
+    """Block until a gRPC channel is ready, with logging."""
+    logger.info("Waiting for %s to be ready (timeout=%ds)...", target, timeout)
+    try:
+        grpc.channel_ready_future(channel).result(timeout=timeout)
+        logger.info("Connected to %s", target)
+    except grpc.FutureTimeoutError:
+        logger.warning("Timeout waiting for %s — will retry on first request", target)
 
 
 class GatewayServicer(inference_pb2_grpc.GatewayServiceServicer):
@@ -28,14 +41,21 @@ class GatewayServicer(inference_pb2_grpc.GatewayServiceServicer):
         self._tokenizer = AutoTokenizer.from_pretrained(model_cfg["name"])
         logger.info("Tokenizer loaded for %s", model_cfg["name"])
 
-        # Connect to prefill and decode workers
+        # Use connect_host (not bind host) for client connections
         prefill_cfg = config["prefill"]
         decode_cfg = config["decode"]
-        prefill_target = f"{prefill_cfg.get('host', 'localhost')}:{prefill_cfg['port']}"
-        decode_target = f"{decode_cfg.get('host', 'localhost')}:{decode_cfg['port']}"
+        prefill_host = prefill_cfg.get("connect_host", "localhost")
+        decode_host = decode_cfg.get("connect_host", "localhost")
+        prefill_target = f"{prefill_host}:{prefill_cfg['port']}"
+        decode_target = f"{decode_host}:{decode_cfg['port']}"
 
-        self._prefill_channel = grpc.insecure_channel(prefill_target)
-        self._decode_channel = grpc.insecure_channel(decode_target)
+        self._prefill_channel = grpc.insecure_channel(prefill_target, options=_CHANNEL_OPTIONS)
+        self._decode_channel = grpc.insecure_channel(decode_target, options=_CHANNEL_OPTIONS)
+
+        # Wait for workers to be available (non-blocking fallback)
+        _wait_for_channel(self._prefill_channel, prefill_target, timeout=30)
+        _wait_for_channel(self._decode_channel, decode_target, timeout=30)
+
         self._prefill_stub = inference_pb2_grpc.PrefillServiceStub(self._prefill_channel)
         self._decode_stub = inference_pb2_grpc.DecodeServiceStub(self._decode_channel)
         logger.info("Connected to prefill=%s decode=%s", prefill_target, decode_target)
@@ -66,7 +86,7 @@ class GatewayServicer(inference_pb2_grpc.GatewayServiceServicer):
             max_tokens = request.max_tokens if request.max_tokens > 0 else 128
             timeout_s = (request.deadline_ms / 1000.0) if request.deadline_ms > 0 else (self._timeout_ms / 1000.0)
 
-            # Phase 1: Prefill
+            # Phase 1: Prefill (wait_for_ready retries if channel is transiently down)
             t_queue = time.perf_counter()
             prefill_req = inference_pb2.PrefillRequest(
                 request_id=request_id,
@@ -74,7 +94,9 @@ class GatewayServicer(inference_pb2_grpc.GatewayServiceServicer):
                 model_name=self._config["model"]["name"],
                 sampling_params=request.sampling_params,
             )
-            prefill_resp = self._prefill_stub.RunPrefill(prefill_req, timeout=timeout_s)
+            prefill_resp = self._prefill_stub.RunPrefill(
+                prefill_req, timeout=timeout_s, wait_for_ready=True,
+            )
             t_prefill_done = time.perf_counter()
 
             with self._lock:
@@ -99,7 +121,9 @@ class GatewayServicer(inference_pb2_grpc.GatewayServiceServicer):
             tokens = [self._tokenizer.decode([prefill_resp.first_token_id], skip_special_tokens=False)]
             tokens_generated = 1
 
-            for decode_resp in self._decode_stub.RunDecode(decode_req, timeout=remaining_s):
+            for decode_resp in self._decode_stub.RunDecode(
+                decode_req, timeout=remaining_s, wait_for_ready=True,
+            ):
                 tokens.append(decode_resp.token_text)
                 tokens_generated = decode_resp.tokens_generated + 1  # +1 for first token from prefill
                 if decode_resp.is_finished:

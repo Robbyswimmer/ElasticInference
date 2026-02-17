@@ -1,14 +1,9 @@
-"""Tests for the sampling logic used in prefill/decode workers."""
-import os
-import sys
-
+"""Tests for the shared sampling logic."""
 import torch
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "common", "proto"))
-import inference_pb2
-
-from workers.prefill import _apply_sampling
+from common.proto import inference_pb2
+from common.sampling import apply_sampling as _apply_sampling
 
 
 class TestGreedySampling:

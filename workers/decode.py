@@ -1,90 +1,18 @@
-import os
-import sys
 import time
 import logging
-import threading
 from concurrent import futures
 
 import grpc
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-# Allow importing generated proto stubs
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "common", "proto"))
-
-import inference_pb2
-import inference_pb2_grpc
-
 from common import load_config
+from common.proto import inference_pb2, inference_pb2_grpc
 from common.kv_store import RedisKVStore
+from common.sampling import apply_sampling
+from common.metrics import MetricsTracker
 
 logger = logging.getLogger(__name__)
-
-
-def _apply_sampling(logits, sampling_params, generated_ids=None):
-    """Apply sampling parameters to logits and return a sampled token id."""
-    # Repetition penalty
-    if generated_ids and sampling_params.repetition_penalty > 1.0:
-        for token_id in set(generated_ids):
-            if logits[token_id] > 0:
-                logits[token_id] /= sampling_params.repetition_penalty
-            else:
-                logits[token_id] *= sampling_params.repetition_penalty
-
-    # Temperature
-    temp = sampling_params.temperature if sampling_params.temperature > 0 else 1.0
-    logits = logits / temp
-
-    # Top-k filtering
-    if sampling_params.top_k > 0:
-        top_k = min(sampling_params.top_k, logits.size(-1))
-        threshold = torch.topk(logits, top_k).values[-1]
-        logits[logits < threshold] = float("-inf")
-
-    # Top-p (nucleus) filtering
-    if 0.0 < sampling_params.top_p < 1.0:
-        sorted_logits, sorted_indices = torch.sort(logits, descending=True)
-        cumulative_probs = torch.softmax(sorted_logits, dim=-1).cumsum(dim=-1)
-        cutoff_mask = cumulative_probs - torch.softmax(sorted_logits, dim=-1) >= sampling_params.top_p
-        sorted_logits[cutoff_mask] = float("-inf")
-        logits = sorted_logits.scatter(0, sorted_indices, sorted_logits)
-
-    probs = torch.softmax(logits, dim=-1)
-    return torch.multinomial(probs, num_samples=1).item()
-
-
-class _MetricsTracker:
-    """Thread-safe request metrics for GetMetrics RPC."""
-
-    def __init__(self):
-        self._lock = threading.Lock()
-        self._active = 0
-        self._total = 0
-        self._total_time_ms = 0.0
-        self._window_start = time.monotonic()
-        self._window_count = 0
-
-    def start_request(self):
-        with self._lock:
-            self._active += 1
-            self._window_count += 1
-
-    def end_request(self, duration_ms):
-        with self._lock:
-            self._active -= 1
-            self._total += 1
-            self._total_time_ms += duration_ms
-
-    def snapshot(self):
-        with self._lock:
-            now = time.monotonic()
-            elapsed = now - self._window_start
-            arrival_rate = self._window_count / elapsed if elapsed > 0 else 0.0
-            avg_time = self._total_time_ms / self._total if self._total > 0 else 0.0
-            # Reset window
-            self._window_start = now
-            self._window_count = 0
-            return self._active, arrival_rate, avg_time
 
 
 class DecodeServicer(inference_pb2_grpc.DecodeServiceServicer):
@@ -107,7 +35,7 @@ class DecodeServicer(inference_pb2_grpc.DecodeServiceServicer):
 
         self._eos_token_id = self._tokenizer.eos_token_id
         self._kv_store = RedisKVStore(config["redis"])
-        self._metrics = _MetricsTracker()
+        self._metrics = MetricsTracker()
         self._max_tokens_default = config["decode"].get("max_new_tokens", 512)
 
     @torch.inference_mode()
@@ -125,7 +53,7 @@ class DecodeServicer(inference_pb2_grpc.DecodeServiceServicer):
                 self._metrics.end_request((time.perf_counter() - t_start) * 1000)
                 return
 
-            # Convert list of (K, V) tuples back to HuggingFace DynamicCache-compatible format
+            # Convert list of (K, V) tuples back to HuggingFace-compatible format
             past_key_values = tuple(kv_cache)
 
             max_tokens = request.max_tokens if request.max_tokens > 0 else self._max_tokens_default
@@ -143,7 +71,7 @@ class DecodeServicer(inference_pb2_grpc.DecodeServiceServicer):
                 last_logits = outputs.logits[0, -1, :].float()
                 sp = request.sampling_params
                 if sp.temperature > 0 or sp.top_k > 0 or sp.top_p > 0:
-                    next_token_id = _apply_sampling(last_logits, sp, generated_ids)
+                    next_token_id = apply_sampling(last_logits, sp, generated_ids)
                 else:
                     next_token_id = torch.argmax(last_logits).item()
 

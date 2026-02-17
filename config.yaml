@@ -12,12 +12,14 @@ gateway:
 
 prefill:
   host: 0.0.0.0
+  connect_host: localhost  # K8s override: "prefill" (service name)
   port: 50052
   batch_size: 8
   max_concurrent: 4
 
 decode:
   host: 0.0.0.0
+  connect_host: localhost  # K8s override: "decode" (service name)
   port: 50053
   max_batch_size: 32
   max_new_tokens: 512

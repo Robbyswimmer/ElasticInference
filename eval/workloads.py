@@ -1,18 +1,12 @@
-import os
-import sys
 import time
 import uuid
 import logging
-import threading
 from concurrent import futures
 
 import grpc
 import numpy as np
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "common", "proto"))
-
-import inference_pb2
-import inference_pb2_grpc
+from common.proto import inference_pb2, inference_pb2_grpc
 
 from eval.metrics import LatencyCollector
 
