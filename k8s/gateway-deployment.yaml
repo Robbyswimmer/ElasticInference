@@ -12,6 +12,9 @@ spec:
     metadata:
       labels:
         app: gateway
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
     spec:
       containers:
         - name: gateway
@@ -33,6 +36,24 @@ spec:
               value: "decode"
             - name: DECODE_PORT
               value: "50053"
+          readinessProbe:
+            exec:
+              command:
+                - python3
+                - -c
+                - "import grpc; ch=grpc.insecure_channel('localhost:50051'); grpc.channel_ready_future(ch).result(timeout=2)"
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            exec:
+              command:
+                - python3
+                - -c
+                - "import grpc; ch=grpc.insecure_channel('localhost:50051'); grpc.channel_ready_future(ch).result(timeout=2)"
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 5
           resources:
             requests:
               cpu: "500m"

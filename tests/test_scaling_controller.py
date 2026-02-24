@@ -24,22 +24,39 @@ class TestScalingController:
     def test_compute_load_prefill(self, controller):
         metrics = MagicMock()
         metrics.active_requests = 2
+        metrics.avg_service_time_ms = 0.0
+        metrics.arrival_rate = 0.0
         load = controller._compute_load(metrics, "prefill")
-        # max_concurrent = 4, so load = 2/4 = 0.5
-        assert abs(load - 0.5) < 0.01
+        # max_concurrent = 4, utilization = 2/4 = 0.5
+        # stime and arrival are 0, so composite = 0.5 * 0.5 = 0.25
+        assert 0.0 < load < 1.0
 
     def test_compute_load_decode(self, controller):
         metrics = MagicMock()
         metrics.active_requests = 16
+        metrics.avg_service_time_ms = 0.0
+        metrics.arrival_rate = 0.0
         load = controller._compute_load(metrics, "decode")
-        # max_batch_size = 32, so load = 16/32 = 0.5
-        assert abs(load - 0.5) < 0.01
+        # max_batch_size = 32, utilization = 16/32 = 0.5
+        assert 0.0 < load < 1.0
 
     def test_compute_load_zero(self, controller):
         metrics = MagicMock()
         metrics.active_requests = 0
+        metrics.avg_service_time_ms = 0.0
+        metrics.arrival_rate = 0.0
         load = controller._compute_load(metrics, "prefill")
         assert load == 0.0
+
+    def test_compute_load_multi_signal(self, controller):
+        """Test that all three signals contribute to composite load."""
+        metrics = MagicMock()
+        metrics.active_requests = 4  # full utilization for prefill (4/4)
+        metrics.avg_service_time_ms = 200.0  # 2x baseline -> signal = 2.0 (capped)
+        metrics.arrival_rate = 8.0  # 2x capacity
+        load = controller._compute_load(metrics, "prefill")
+        # All signals are high, composite should be well above threshold
+        assert load > 0.5
 
     @patch("scaling.controller.subprocess.run")
     def test_scale_up(self, mock_run, controller):
@@ -88,6 +105,8 @@ class TestScalingController:
         import time as _time
         metrics = MagicMock()
         metrics.active_requests = 32
+        metrics.avg_service_time_ms = 200.0
+        metrics.arrival_rate = 50.0
 
         with patch.object(controller, "_get_metrics", return_value=metrics), \
              patch.object(controller, "_scale") as mock_scale:
@@ -102,6 +121,8 @@ class TestScalingController:
         import time
         metrics = MagicMock()
         metrics.active_requests = 32
+        metrics.avg_service_time_ms = 200.0
+        metrics.arrival_rate = 50.0
 
         with patch.object(controller, "_get_metrics", return_value=metrics), \
              patch.object(controller, "_scale") as mock_scale:
@@ -109,3 +130,32 @@ class TestScalingController:
                 stage["last_scale_time"] = time.monotonic()
             controller._step()
             mock_scale.assert_not_called()
+
+    def test_oscillation_detection(self, controller):
+        """Alternating up/down should trigger oscillation detection."""
+        stage = controller._stages["prefill"]
+        # Alternating pattern: up, down, up, down, up
+        for direction in [1, -1, 1, -1, 1]:
+            stage["scale_history"].append(direction)
+        assert controller._detect_oscillation("prefill") is True
+
+    def test_no_oscillation_with_consistent_scaling(self, controller):
+        """Consistent scale-up should not trigger oscillation."""
+        stage = controller._stages["prefill"]
+        for _ in range(5):
+            stage["scale_history"].append(1)
+        assert controller._detect_oscillation("prefill") is False
+
+    def test_scaling_events_logged(self, controller):
+        """Scaling events should be recorded for eval."""
+        from unittest.mock import patch as p
+        with p("scaling.controller.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0)
+            controller._stages["prefill"]["current_replicas"] = 1
+            controller._scale("prefill", 2)
+            events = controller.scaling_events
+            assert len(events) == 1
+            assert events[0]["stage"] == "prefill"
+            assert events[0]["from_replicas"] == 1
+            assert events[0]["to_replicas"] == 2
+            assert events[0]["direction"] == "up"

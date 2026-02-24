@@ -37,6 +37,46 @@ class DecodeServicer(inference_pb2_grpc.DecodeServiceServicer):
         self._kv_store = RedisKVStore(config["redis"])
         self._metrics = MetricsTracker()
         self._max_tokens_default = config["decode"].get("max_new_tokens", 512)
+        self._max_batch_size = config["decode"].get("max_batch_size", 32)
+
+        # MoE simulation: fraction of experts activated per token (0.0-1.0)
+        # Higher = more compute per decode step (simulates top-k expert routing)
+        self._moe_expert_ratio = config["decode"].get("moe_expert_ratio", 1.0)
+        self._moe_num_experts = config["decode"].get("moe_num_experts", 8)
+        self._moe_top_k = config["decode"].get("moe_top_k", 2)
+
+        # Autotune: detect GPU% from env
+        import os
+        self._gpu_pct = int(os.environ.get("CUDA_MPS_ACTIVE_THREAD_PERCENTAGE", 100))
+        logger.info("Decode worker GPU%%: %d, MoE experts=%d top_k=%d",
+                     self._gpu_pct, self._moe_num_experts, self._moe_top_k)
+
+    def update_config(self, max_batch_size=None):
+        """Dynamically update runtime config from autotune selector."""
+        if max_batch_size is not None and max_batch_size != self._max_batch_size:
+            logger.info("Autotune: updating decode max_batch_size %d -> %d",
+                        self._max_batch_size, max_batch_size)
+            self._max_batch_size = max_batch_size
+
+    @property
+    def gpu_pct(self):
+        return self._gpu_pct
+
+    def _simulate_moe_delay(self):
+        """Simulate MoE expert routing overhead.
+
+        In a real MoE model, only top-k of N experts run per token.
+        We simulate this by adding a small sleep proportional to the
+        expert ratio (top_k / num_experts), representing the gating
+        and communication overhead.
+        """
+        if self._moe_num_experts <= 1:
+            return
+        ratio = self._moe_top_k / self._moe_num_experts
+        # Simulate 0.1-0.5ms overhead per expert routing decision
+        overhead_ms = ratio * 0.5
+        if overhead_ms > 0.01:
+            time.sleep(overhead_ms / 1000.0)
 
     @torch.inference_mode()
     def RunDecode(self, request, context):
@@ -62,6 +102,9 @@ class DecodeServicer(inference_pb2_grpc.DecodeServiceServicer):
 
             for step in range(max_tokens):
                 t_step = time.perf_counter()
+
+                # Simulate MoE expert routing overhead
+                self._simulate_moe_delay()
 
                 input_ids = torch.tensor([[current_token_id]], dtype=torch.long, device=self._device)
                 outputs = self._model(input_ids=input_ids, past_key_values=past_key_values, use_cache=True)

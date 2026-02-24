@@ -23,6 +23,9 @@ decode:
   port: 50053
   max_batch_size: 32
   max_new_tokens: 512
+  # MoE simulation: top-k of N experts activated per decode step
+  moe_num_experts: 8
+  moe_top_k: 2
 
 redis:
   host: localhost

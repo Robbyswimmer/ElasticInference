@@ -90,6 +90,76 @@ def plot_throughput_over_time(records, window_s=5, output_path="throughput.png")
     logger.info("Saved throughput plot to %s", output_path)
 
 
+def plot_scaling_stability(stability, output_path="scaling_stability.png"):
+    """Plot scaling stability metrics as a summary bar chart."""
+    if not HAS_MPL or not stability:
+        return
+    metrics = {
+        "Events": stability.get("total_scaling_events", 0),
+        "Scale-ups": stability.get("scale_up_events", 0),
+        "Scale-downs": stability.get("scale_down_events", 0),
+        "Osc/min": stability.get("oscillation_frequency_per_min", 0),
+    }
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+
+    # Event counts
+    names = ["Total", "Scale-up", "Scale-down"]
+    vals = [stability.get("total_scaling_events", 0),
+            stability.get("scale_up_events", 0),
+            stability.get("scale_down_events", 0)]
+    colors = ["#4C72B0", "#55A868", "#C44E52"]
+    axes[0].bar(names, vals, color=colors)
+    axes[0].set_ylabel("Count")
+    axes[0].set_title("Scaling Events")
+    axes[0].grid(True, alpha=0.3, axis="y")
+
+    # Stability metrics
+    stab_names = ["Osc Freq\n(per min)", "Avg Convergence\n(sec)", "Direction\nChange Ratio"]
+    stab_vals = [stability.get("oscillation_frequency_per_min", 0),
+                 stability.get("avg_convergence_time_s", 0),
+                 stability.get("direction_change_ratio", 0)]
+    axes[1].bar(stab_names, stab_vals, color=["#DD8452", "#8172B2", "#937860"])
+    axes[1].set_title("Scaling Stability")
+    axes[1].grid(True, alpha=0.3, axis="y")
+
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150)
+    plt.close()
+    logger.info("Saved scaling stability plot to %s", output_path)
+
+
+def plot_ablation(ablation_results, output_path="ablation.png"):
+    """Plot ablation study results showing contribution of each feature."""
+    if not HAS_MPL or not ablation_results:
+        return
+    names = list(ablation_results.keys())
+    p95s = [ablation_results[n].get("e2e_p95_ms", 0) for n in names]
+    tps = [ablation_results[n].get("throughput_tps", 0) for n in names]
+    gpu_eff = [ablation_results[n].get("gpu_seconds_per_request", 0) for n in names]
+
+    fig, axes = plt.subplots(1, 3, figsize=(16, 5))
+
+    axes[0].barh(names, p95s, color="#C44E52")
+    axes[0].set_xlabel("p95 Latency (ms)")
+    axes[0].set_title("Latency Impact")
+    axes[0].grid(True, alpha=0.3, axis="x")
+
+    axes[1].barh(names, tps, color="#55A868")
+    axes[1].set_xlabel("Tokens/sec")
+    axes[1].set_title("Throughput Impact")
+    axes[1].grid(True, alpha=0.3, axis="x")
+
+    axes[2].barh(names, gpu_eff, color="#4C72B0")
+    axes[2].set_xlabel("GPU-seconds/request")
+    axes[2].set_title("Efficiency Impact")
+    axes[2].grid(True, alpha=0.3, axis="x")
+
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150)
+    plt.close()
+    logger.info("Saved ablation plot to %s", output_path)
+
+
 def save_results_json(summary, records, output_path="results.json"):
     """Save summary + raw records to JSON."""
     with open(output_path, "w") as f:

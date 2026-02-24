@@ -39,6 +39,23 @@ class PrefillServicer(inference_pb2_grpc.PrefillServiceServicer):
         self._max_concurrent = config["prefill"].get("max_concurrent", 4)
         self._semaphore = threading.Semaphore(self._max_concurrent)
 
+        # Autotune: detect GPU% from env (set by MPS or scaling controller)
+        import os
+        self._gpu_pct = int(os.environ.get("CUDA_MPS_ACTIVE_THREAD_PERCENTAGE", 100))
+        logger.info("Prefill worker GPU%%: %d", self._gpu_pct)
+
+    def update_config(self, max_concurrent=None):
+        """Dynamically update runtime config from autotune selector."""
+        if max_concurrent is not None and max_concurrent != self._max_concurrent:
+            logger.info("Autotune: updating prefill max_concurrent %d -> %d",
+                        self._max_concurrent, max_concurrent)
+            self._max_concurrent = max_concurrent
+            self._semaphore = threading.Semaphore(max_concurrent)
+
+    @property
+    def gpu_pct(self):
+        return self._gpu_pct
+
     @torch.inference_mode()
     def RunPrefill(self, request, context):
         if not self._semaphore.acquire(timeout=0):
