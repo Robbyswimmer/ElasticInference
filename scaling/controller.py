@@ -2,6 +2,7 @@ import time
 import json
 import logging
 import subprocess
+import shutil
 from collections import deque
 
 import grpc
@@ -67,6 +68,9 @@ class ScalingController:
                 "ema_service_time": 0.0,
                 "ema_arrival_rate": 0.0,
             }
+
+        if shutil.which("kubectl") is None:
+            logger.warning("kubectl binary not found; scaling actions will fail until it is installed")
 
     @property
     def scaling_events(self):
@@ -173,6 +177,8 @@ class ScalingController:
             else:
                 info["adaptive_cooldown"] = self._cooldown
 
+        except FileNotFoundError:
+            logger.error("kubectl binary not found in controller container; cannot scale %s", stage)
         except subprocess.CalledProcessError as e:
             logger.error("kubectl scale failed for %s: %s", stage, e.stderr)
 

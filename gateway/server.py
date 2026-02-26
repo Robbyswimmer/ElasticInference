@@ -9,6 +9,18 @@ from transformers import AutoTokenizer
 
 from common import load_config
 from common.proto import inference_pb2, inference_pb2_grpc
+from gateway.metrics import (
+    REQUESTS_TOTAL,
+    PREFILL_LATENCY,
+    DECODE_LATENCY,
+    E2E_LATENCY,
+    TTFT_LATENCY,
+    PREFILL_QUEUE,
+    DECODE_QUEUE,
+    ACTIVE_REQUESTS,
+    TOKENS_GENERATED,
+    start_metrics_server,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -70,15 +82,23 @@ class GatewayServicer(inference_pb2_grpc.GatewayServiceServicer):
         self._window_count = 0
         self._prefill_queue = 0
         self._decode_queue = 0
+        PREFILL_QUEUE.set(0)
+        DECODE_QUEUE.set(0)
+        ACTIVE_REQUESTS.set(0)
 
     def Infer(self, request, context):
         request_id = request.request_id or str(uuid.uuid4())
         t_start = time.perf_counter()
+        in_prefill_queue = False
+        in_decode_queue = False
 
         with self._lock:
             self._active += 1
             self._window_count += 1
             self._prefill_queue += 1
+            in_prefill_queue = True
+            ACTIVE_REQUESTS.set(self._active)
+            PREFILL_QUEUE.set(self._prefill_queue)
 
         try:
             # Tokenize
@@ -100,8 +120,13 @@ class GatewayServicer(inference_pb2_grpc.GatewayServiceServicer):
             t_prefill_done = time.perf_counter()
 
             with self._lock:
-                self._prefill_queue -= 1
+                if in_prefill_queue:
+                    self._prefill_queue = max(0, self._prefill_queue - 1)
+                    in_prefill_queue = False
                 self._decode_queue += 1
+                in_decode_queue = True
+                PREFILL_QUEUE.set(self._prefill_queue)
+                DECODE_QUEUE.set(self._decode_queue)
 
             # Phase 2: Decode (streaming)
             decode_req = inference_pb2.DecodeRequest(
@@ -114,6 +139,7 @@ class GatewayServicer(inference_pb2_grpc.GatewayServiceServicer):
 
             remaining_s = timeout_s - (t_prefill_done - t_queue)
             if remaining_s <= 0:
+                REQUESTS_TOTAL.labels(status="deadline_exceeded").inc()
                 context.set_code(grpc.StatusCode.DEADLINE_EXCEEDED)
                 context.set_details("Deadline exceeded after prefill")
                 return inference_pb2.InferResponse()
@@ -132,13 +158,24 @@ class GatewayServicer(inference_pb2_grpc.GatewayServiceServicer):
             t_done = time.perf_counter()
 
             with self._lock:
-                self._decode_queue -= 1
+                if in_decode_queue:
+                    self._decode_queue = max(0, self._decode_queue - 1)
+                    in_decode_queue = False
+                    DECODE_QUEUE.set(self._decode_queue)
 
             generated_text = "".join(tokens)
             queue_wait_ms = (t_queue - t_start) * 1000
             prefill_ms = prefill_resp.prefill_time_ms
             decode_ms = (t_done - t_prefill_done) * 1000
             total_ms = (t_done - t_start) * 1000
+            ttft_ms = queue_wait_ms + prefill_ms
+
+            PREFILL_LATENCY.observe(prefill_ms)
+            DECODE_LATENCY.observe(decode_ms)
+            E2E_LATENCY.observe(total_ms)
+            TTFT_LATENCY.observe(ttft_ms)
+            TOKENS_GENERATED.inc(tokens_generated)
+            REQUESTS_TOTAL.labels(status="ok").inc()
 
             logger.info(
                 "Infer %s — %d tokens, total=%.1fms (prefill=%.1fms decode=%.1fms)",
@@ -158,19 +195,29 @@ class GatewayServicer(inference_pb2_grpc.GatewayServiceServicer):
             )
 
         except grpc.RpcError as e:
+            status = e.code().name.lower() if e.code() else "grpc_error"
+            REQUESTS_TOTAL.labels(status=status).inc()
             logger.error("Infer %s failed: %s", request_id, e)
             context.set_code(e.code())
-            context.set_details(e.details())
+            context.set_details(e.details() or str(e))
             return inference_pb2.InferResponse()
         except Exception as e:
+            REQUESTS_TOTAL.labels(status="internal_error").inc()
             logger.exception("Infer %s unexpected error: %s", request_id, e)
             context.set_code(grpc.StatusCode.INTERNAL)
             context.set_details(str(e))
             return inference_pb2.InferResponse()
         finally:
             with self._lock:
-                self._active -= 1
+                if in_prefill_queue:
+                    self._prefill_queue = max(0, self._prefill_queue - 1)
+                if in_decode_queue:
+                    self._decode_queue = max(0, self._decode_queue - 1)
+                self._active = max(0, self._active - 1)
                 self._total += 1
+                PREFILL_QUEUE.set(self._prefill_queue)
+                DECODE_QUEUE.set(self._decode_queue)
+                ACTIVE_REQUESTS.set(self._active)
 
     def GetMetrics(self, request, context):
         with self._lock:
@@ -198,6 +245,9 @@ def serve(config=None):
     gw_cfg = config["gateway"]
     host = gw_cfg.get("host", "0.0.0.0")
     port = gw_cfg.get("port", 50051)
+    prom_cfg = config.get("prometheus", {})
+    if prom_cfg.get("enabled", True):
+        start_metrics_server(prom_cfg.get("port", 9090))
 
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=gw_cfg.get("max_queue_size", 256)))
     inference_pb2_grpc.add_GatewayServiceServicer_to_server(GatewayServicer(config), server)

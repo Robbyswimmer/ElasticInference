@@ -5,6 +5,7 @@ from concurrent import futures
 
 import grpc
 import torch
+from prometheus_client import start_http_server
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from common import load_config
@@ -131,6 +132,11 @@ def serve(config=None):
     prefill_cfg = config["prefill"]
     host = prefill_cfg.get("host", "0.0.0.0")
     port = prefill_cfg.get("port", 50052)
+    prom_cfg = config.get("prometheus", {})
+    if prom_cfg.get("enabled", True):
+        metrics_port = prom_cfg.get("port", 9090)
+        start_http_server(metrics_port)
+        logger.info("Prometheus metrics server on :%d", metrics_port)
 
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=prefill_cfg.get("max_concurrent", 4)))
     inference_pb2_grpc.add_PrefillServiceServicer_to_server(PrefillServicer(config), server)

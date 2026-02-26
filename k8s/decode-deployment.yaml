@@ -19,7 +19,7 @@ spec:
       containers:
         - name: decode
           image: llm-inference/worker:latest
-          imagePullPolicy: Never
+          imagePullPolicy: IfNotPresent
           command: ["python3", "-m", "workers.decode"]
           ports:
             - containerPort: 50053

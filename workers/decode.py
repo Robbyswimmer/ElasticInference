@@ -4,6 +4,7 @@ from concurrent import futures
 
 import grpc
 import torch
+from prometheus_client import start_http_server
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from common import load_config
@@ -177,6 +178,11 @@ def serve(config=None):
     decode_cfg = config["decode"]
     host = decode_cfg.get("host", "0.0.0.0")
     port = decode_cfg.get("port", 50053)
+    prom_cfg = config.get("prometheus", {})
+    if prom_cfg.get("enabled", True):
+        metrics_port = prom_cfg.get("port", 9090)
+        start_http_server(metrics_port)
+        logger.info("Prometheus metrics server on :%d", metrics_port)
 
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=decode_cfg.get("max_batch_size", 32)))
     inference_pb2_grpc.add_DecodeServiceServicer_to_server(DecodeServicer(config), server)

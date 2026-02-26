@@ -19,7 +19,7 @@ spec:
       containers:
         - name: prefill
           image: llm-inference/worker:latest
-          imagePullPolicy: Never
+          imagePullPolicy: IfNotPresent
           command: ["python3", "-m", "workers.prefill"]
           ports:
             - containerPort: 50052

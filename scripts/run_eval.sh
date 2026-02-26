@@ -21,7 +21,7 @@ echo "  Output:       $OUTPUT_DIR"
 echo ""
 
 cd "$PROJECT_DIR"
-python -c "
+python3 -c "
 import sys, logging
 sys.path.insert(0, '.')
 logging.basicConfig(level=logging.INFO,

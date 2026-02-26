@@ -10,40 +10,28 @@ data:
       evaluation_interval: 5s
 
     scrape_configs:
-      - job_name: 'gateway'
+      - job_name: 'llm-inference-pods'
         kubernetes_sd_configs:
           - role: pod
             namespaces:
               names: ['llm-inference']
         relabel_configs:
-          - source_labels: [__meta_kubernetes_pod_label_app]
-            regex: gateway
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            regex: "true"
             action: keep
           - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
-            target_label: __address__
             regex: (.+)
-            replacement: ${1}
+            target_label: __tmp_port
+            replacement: $1
             action: replace
-
-      - job_name: 'prefill'
-        kubernetes_sd_configs:
-          - role: pod
-            namespaces:
-              names: ['llm-inference']
-        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_ip, __tmp_port]
+            regex: (.+);(.+)
+            target_label: __address__
+            replacement: $1:$2
+            action: replace
           - source_labels: [__meta_kubernetes_pod_label_app]
-            regex: prefill
-            action: keep
-
-      - job_name: 'decode'
-        kubernetes_sd_configs:
-          - role: pod
-            namespaces:
-              names: ['llm-inference']
-        relabel_configs:
-          - source_labels: [__meta_kubernetes_pod_label_app]
-            regex: decode
-            action: keep
+            target_label: app
+            action: replace
 
       # Static fallback for non-K8s SD environments
       - job_name: 'llm-inference-static'

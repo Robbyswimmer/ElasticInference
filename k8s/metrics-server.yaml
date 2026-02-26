@@ -17,7 +17,7 @@ spec:
       containers:
         - name: controller
           image: llm-inference/controller:latest
-          imagePullPolicy: Never
+          imagePullPolicy: IfNotPresent
           env:
             - name: REDIS_HOST
               value: "redis"

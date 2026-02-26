@@ -2,6 +2,13 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates curl && \
+    rm -rf /var/lib/apt/lists/* && \
+    curl -fsSL -o /usr/local/bin/kubectl \
+    https://dl.k8s.io/release/v1.30.6/bin/linux/amd64/kubectl && \
+    chmod +x /usr/local/bin/kubectl
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir grpcio pyyaml prometheus-client
 
