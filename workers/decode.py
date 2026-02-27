@@ -6,6 +6,10 @@ import grpc
 import torch
 from prometheus_client import start_http_server
 from transformers import AutoModelForCausalLM, AutoTokenizer
+try:
+    from transformers.cache_utils import DynamicCache
+except Exception:  # pragma: no cover - compatibility with older transformers
+    DynamicCache = None
 
 from common import load_config
 from common.proto import inference_pb2, inference_pb2_grpc
@@ -94,8 +98,18 @@ class DecodeServicer(inference_pb2_grpc.DecodeServiceServicer):
                 self._metrics.end_request((time.perf_counter() - t_start) * 1000)
                 return
 
-            # Convert list of (K, V) tuples back to HuggingFace-compatible format
-            past_key_values = tuple(kv_cache)
+            # Convert stored legacy KV tuples into a transformers cache object.
+            # transformers>=5 expects DynamicCache with get_seq_length().
+            legacy_past = tuple(kv_cache)
+            if DynamicCache is not None:
+                cache_obj = DynamicCache()
+                for layer_idx, layer_kv in enumerate(legacy_past):
+                    key_states, value_states = layer_kv
+                    cache_obj.update(key_states, value_states, layer_idx)
+                past_key_values = cache_obj
+            else:
+                # Fallback for very old transformers that still accept tuple cache.
+                past_key_values = legacy_past
 
             max_tokens = request.max_tokens if request.max_tokens > 0 else self._max_tokens_default
             current_token_id = request.first_token_id

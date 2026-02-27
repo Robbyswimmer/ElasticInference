@@ -8,14 +8,19 @@ REGISTRY="${REGISTRY:-}"  # Set to "myregistry.com/" for remote, empty for local
 IMAGE_TAG="${IMAGE_TAG:-$(date +%Y%m%d%H%M%S)}"
 ENABLE_PROMETHEUS="${ENABLE_PROMETHEUS:-1}"
 ENABLE_HPA="${ENABLE_HPA:-0}"
+ENABLE_CONTROLLER="${ENABLE_CONTROLLER:-1}"
+PREFILL_ROLLOUT_TIMEOUT="${PREFILL_ROLLOUT_TIMEOUT:-900s}"
+DECODE_ROLLOUT_TIMEOUT="${DECODE_ROLLOUT_TIMEOUT:-900s}"
+GATEWAY_ROLLOUT_TIMEOUT="${GATEWAY_ROLLOUT_TIMEOUT:-180s}"
+CONTROLLER_ROLLOUT_TIMEOUT="${CONTROLLER_ROLLOUT_TIMEOUT:-180s}"
 
 if [ -n "$REGISTRY" ] && [[ "$REGISTRY" != */ ]]; then
     REGISTRY="${REGISTRY}/"
 fi
 
-GATEWAY_IMAGE="${REGISTRY}llm-inference/gateway:${IMAGE_TAG}"
-WORKER_IMAGE="${REGISTRY}llm-inference/worker:${IMAGE_TAG}"
-CONTROLLER_IMAGE="${REGISTRY}llm-inference/controller:${IMAGE_TAG}"
+GATEWAY_IMAGE="${REGISTRY}llm-inference:gateway-${IMAGE_TAG}"
+WORKER_IMAGE="${REGISTRY}llm-inference:worker-${IMAGE_TAG}"
+CONTROLLER_IMAGE="${REGISTRY}llm-inference:controller-${IMAGE_TAG}"
 
 NODE_COUNT="$(kubectl get nodes --no-headers | wc -l | tr -d ' ')"
 if [ "$NODE_COUNT" -gt 1 ] && [ -z "$REGISTRY" ]; then
@@ -55,8 +60,12 @@ echo "=== Deploying Gateway ==="
 kubectl apply -f "$PROJECT_DIR/k8s/gateway-deployment.yaml"
 kubectl apply -f "$PROJECT_DIR/k8s/gateway-service.yaml"
 
-echo "=== Deploying Scaling Controller ==="
-kubectl apply -f "$PROJECT_DIR/k8s/metrics-server.yaml"
+if [ "$ENABLE_CONTROLLER" = "1" ]; then
+    echo "=== Deploying Scaling Controller ==="
+    kubectl apply -f "$PROJECT_DIR/k8s/metrics-server.yaml"
+else
+    echo "=== Skipping Scaling Controller (ENABLE_CONTROLLER=0) ==="
+fi
 
 if [ "$ENABLE_PROMETHEUS" = "1" ]; then
     echo "=== Deploying Prometheus ==="
@@ -67,21 +76,28 @@ echo "=== Updating deployment images ==="
 kubectl -n "$NAMESPACE" set image deployment/gateway gateway="$GATEWAY_IMAGE"
 kubectl -n "$NAMESPACE" set image deployment/prefill prefill="$WORKER_IMAGE"
 kubectl -n "$NAMESPACE" set image deployment/decode decode="$WORKER_IMAGE"
-kubectl -n "$NAMESPACE" set image deployment/scaling-controller controller="$CONTROLLER_IMAGE"
+if [ "$ENABLE_CONTROLLER" = "1" ]; then
+    kubectl -n "$NAMESPACE" set image deployment/scaling-controller controller="$CONTROLLER_IMAGE"
+fi
 
 if [ -n "$REGISTRY" ]; then
     echo "=== Using remote registry images (imagePullPolicy=Always) ==="
-    kubectl -n "$NAMESPACE" patch deployment gateway --type='merge' -p '{"spec":{"template":{"spec":{"containers":[{"name":"gateway","imagePullPolicy":"Always"}]}}}}'
-    kubectl -n "$NAMESPACE" patch deployment prefill --type='merge' -p '{"spec":{"template":{"spec":{"containers":[{"name":"prefill","imagePullPolicy":"Always"}]}}}}'
-    kubectl -n "$NAMESPACE" patch deployment decode --type='merge' -p '{"spec":{"template":{"spec":{"containers":[{"name":"decode","imagePullPolicy":"Always"}]}}}}'
-    kubectl -n "$NAMESPACE" patch deployment scaling-controller --type='merge' -p '{"spec":{"template":{"spec":{"containers":[{"name":"controller","imagePullPolicy":"Always"}]}}}}'
+    # Use strategic merge so container items are merged by name instead of replacing the whole array.
+    kubectl -n "$NAMESPACE" patch deployment gateway --type='strategic' -p '{"spec":{"template":{"spec":{"containers":[{"name":"gateway","imagePullPolicy":"Always"}]}}}}'
+    kubectl -n "$NAMESPACE" patch deployment prefill --type='strategic' -p '{"spec":{"template":{"spec":{"containers":[{"name":"prefill","imagePullPolicy":"Always"}]}}}}'
+    kubectl -n "$NAMESPACE" patch deployment decode --type='strategic' -p '{"spec":{"template":{"spec":{"containers":[{"name":"decode","imagePullPolicy":"Always"}]}}}}'
+    if [ "$ENABLE_CONTROLLER" = "1" ]; then
+        kubectl -n "$NAMESPACE" patch deployment scaling-controller --type='strategic' -p '{"spec":{"template":{"spec":{"containers":[{"name":"controller","imagePullPolicy":"Always"}]}}}}'
+    fi
 fi
 
 echo "=== Waiting for rollouts ==="
-kubectl -n "$NAMESPACE" rollout status deployment/prefill --timeout=300s
-kubectl -n "$NAMESPACE" rollout status deployment/decode --timeout=300s
-kubectl -n "$NAMESPACE" rollout status deployment/gateway --timeout=120s
-kubectl -n "$NAMESPACE" rollout status deployment/scaling-controller --timeout=120s
+kubectl -n "$NAMESPACE" rollout status deployment/prefill --timeout="$PREFILL_ROLLOUT_TIMEOUT"
+kubectl -n "$NAMESPACE" rollout status deployment/decode --timeout="$DECODE_ROLLOUT_TIMEOUT"
+kubectl -n "$NAMESPACE" rollout status deployment/gateway --timeout="$GATEWAY_ROLLOUT_TIMEOUT"
+if [ "$ENABLE_CONTROLLER" = "1" ]; then
+    kubectl -n "$NAMESPACE" rollout status deployment/scaling-controller --timeout="$CONTROLLER_ROLLOUT_TIMEOUT"
+fi
 
 if [ "$ENABLE_HPA" = "1" ]; then
     echo "=== Applying HPAs (requires external metrics adapter) ==="

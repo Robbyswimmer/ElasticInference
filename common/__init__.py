@@ -1,10 +1,22 @@
 import os
 import yaml
 import logging
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _cast_int_env(value):
+    """Cast numeric env vars and tolerate K8s service-link style tcp URLs."""
+    try:
+        return int(value)
+    except ValueError:
+        parsed = urlparse(value)
+        if parsed.scheme and parsed.port is not None:
+            return parsed.port
+        raise
 
 
 def load_config(path=None):
@@ -24,14 +36,14 @@ def load_config(path=None):
     # Environment variable overrides for K8s deployments
     _env_overrides = {
         "REDIS_HOST":   ("redis", "host"),
-        "REDIS_PORT":   ("redis", "port", int),
+        "REDIS_PORT":   ("redis", "port", _cast_int_env),
         "MODEL_NAME":   ("model", "name"),
         "LOG_LEVEL":    ("logging", "level"),
-        "GATEWAY_PORT": ("gateway", "port", int),
+        "GATEWAY_PORT": ("gateway", "port", _cast_int_env),
         "PREFILL_HOST": ("prefill", "connect_host"),
-        "PREFILL_PORT": ("prefill", "port", int),
+        "PREFILL_PORT": ("prefill", "port", _cast_int_env),
         "DECODE_HOST":  ("decode", "connect_host"),
-        "DECODE_PORT":  ("decode", "port", int),
+        "DECODE_PORT":  ("decode", "port", _cast_int_env),
     }
 
     for env_var, spec in _env_overrides.items():

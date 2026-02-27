@@ -14,6 +14,7 @@ RUN pip install --no-cache-dir grpcio pyyaml prometheus-client
 
 COPY common/ common/
 COPY scaling/ scaling/
+COPY autotune/ autotune/
 COPY config.yaml .
 
 # Compile proto stubs
