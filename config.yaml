@@ -36,18 +36,33 @@ redis:
 
 scaling:
   metrics_interval: 5
-  cooldown: 30
-  ema_alpha: 0.3
+  cooldown: 75
+  ema_alpha: 0.18
+  metrics_timeout_seconds: 8
+  downscale_signal: instant
+  service_time_baseline_ms: 300
+  fast_scale_up: true
+  fast_scale_up_factor: 1.5
+  fast_scale_up_step: 2
+  oscillation_backoff_factor: 1.5
+  max_adaptive_cooldown: 240
+  scale_up_consecutive_required: 1
+  scale_down_consecutive_required: 2
+  signal_weights:
+    utilization: 0.82
+    service_time: 0.03
+    arrival_rate: 0.15
   prefill:
     min_replicas: 1
-    max_replicas: 4
-    scale_up_threshold: 0.8
-    scale_down_threshold: 0.3
+    max_replicas: 2
+    scale_up_threshold: 1.1
+    scale_down_threshold: 0.25
   decode:
     min_replicas: 1
-    max_replicas: 8
-    scale_up_threshold: 0.8
-    scale_down_threshold: 0.3
+    max_replicas: 5
+    scale_up_threshold: 0.2
+    scale_down_threshold: 0.05
+    scale_down_consecutive_required: 2
 
 autotune:
   enabled: false

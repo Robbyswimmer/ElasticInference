@@ -88,14 +88,13 @@ class DecodeServicer(inference_pb2_grpc.DecodeServiceServicer):
         self._metrics.start_request()
         t_start = time.perf_counter()
         tokens_generated = 0
-
+        finalized = False
         try:
             # Retrieve KV cache from Redis
             kv_cache = self._kv_store.get(request.request_id, device=self._device)
             if kv_cache is None:
                 context.set_code(grpc.StatusCode.NOT_FOUND)
                 context.set_details(f"KV cache not found for {request.request_id}")
-                self._metrics.end_request((time.perf_counter() - t_start) * 1000)
                 return
 
             # Convert stored legacy KV tuples into a transformers cache object.
@@ -154,22 +153,25 @@ class DecodeServicer(inference_pb2_grpc.DecodeServiceServicer):
                 generated_ids.append(next_token_id)
 
             elapsed_ms = (time.perf_counter() - t_start) * 1000
-            self._metrics.end_request(elapsed_ms)
-
-            # Clean up KV cache from Redis
-            self._kv_store.delete(request.request_id)
+            finalized = True
             logger.info(
                 "Decode %s — %d tokens, %.1fms total",
                 request.request_id, tokens_generated, elapsed_ms,
             )
 
         except Exception as e:
-            elapsed_ms = (time.perf_counter() - t_start) * 1000
-            self._metrics.end_request(elapsed_ms)
-            self._kv_store.delete(request.request_id)
             logger.exception("Decode failed for %s: %s", request.request_id, e)
             context.set_code(grpc.StatusCode.INTERNAL)
             context.set_details(str(e))
+        finally:
+            elapsed_ms = (time.perf_counter() - t_start) * 1000
+            self._metrics.end_request(elapsed_ms)
+            self._kv_store.delete(request.request_id)
+            if not finalized:
+                logger.info(
+                    "Decode %s finalized early — %d tokens, %.1fms total",
+                    request.request_id, tokens_generated, elapsed_ms,
+                )
 
     def GetMetrics(self, request, context):
         active, arrival_rate, avg_time = self._metrics.snapshot()
