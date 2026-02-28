@@ -4,7 +4,7 @@ set -euo pipefail
 # Repro script for decode scaling trajectory: 1 -> 5 -> 1
 #
 # Usage:
-#   bash tests/run_scaling_1to5to1.sh
+#   bash tests/run_decode_1to5to1.sh
 #
 # Optional env vars:
 #   NS=llm-inference
@@ -13,6 +13,13 @@ set -euo pipefail
 #   PIN_CONTROLLER_IMAGE=docker.io/<user>/llm-inference:<tag>
 #   PIN_WORKER_IMAGE=docker.io/<user>/llm-inference:<tag>
 #   EXPECT_CONFIG_SHA256=<sha256_of_config_yaml>
+#   PREFILL_PULSE_ENABLE=1
+#   PREFILL_N=240
+#   PREFILL_RPS=10.0
+#   PREFILL_WORKERS=24
+#   PREFILL_TOKEN_LEN=384
+#   PREFILL_TIMEOUT=60
+#   PREFILL_POST_IDLE=180
 #   SPIKE_N=900
 #   SPIKE_RPS=6.0
 #   SPIKE_WORKERS=18
@@ -31,6 +38,14 @@ BASE_REPLICAS="${BASE_REPLICAS:-1}"
 PIN_CONTROLLER_IMAGE="${PIN_CONTROLLER_IMAGE:-}"
 PIN_WORKER_IMAGE="${PIN_WORKER_IMAGE:-}"
 EXPECT_CONFIG_SHA256="${EXPECT_CONFIG_SHA256:-}"
+
+PREFILL_PULSE_ENABLE="${PREFILL_PULSE_ENABLE:-1}"
+PREFILL_N="${PREFILL_N:-240}"
+PREFILL_RPS="${PREFILL_RPS:-10.0}"
+PREFILL_WORKERS="${PREFILL_WORKERS:-24}"
+PREFILL_TOKEN_LEN="${PREFILL_TOKEN_LEN:-384}"
+PREFILL_TIMEOUT="${PREFILL_TIMEOUT:-60}"
+PREFILL_POST_IDLE="${PREFILL_POST_IDLE:-180}"
 
 SPIKE_N="${SPIKE_N:-900}"
 SPIKE_RPS="${SPIKE_RPS:-6.0}"
@@ -56,6 +71,7 @@ echo "=== Scaling 1->5->1 Repro ==="
 echo "namespace:      $NS"
 echo "trace_file:     $trace_file"
 echo "manifest_file:  $manifest_file"
+echo "prefill_pulse:  enable=$PREFILL_PULSE_ENABLE N=$PREFILL_N RPS=$PREFILL_RPS workers=$PREFILL_WORKERS token_len=$PREFILL_TOKEN_LEN"
 echo "spike:          N=$SPIKE_N RPS=$SPIKE_RPS workers=$SPIKE_WORKERS max_tokens=$SPIKE_MAX_TOKENS"
 echo "idle_seconds:   $IDLE_SECONDS"
 echo "sample_interval:$SAMPLE_INTERVAL"
@@ -119,6 +135,13 @@ pin_controller_image=${PIN_CONTROLLER_IMAGE}
 prefill_image=${PREFILL_IMAGE}
 decode_image=${DECODE_IMAGE}
 controller_image=${CONTROLLER_IMAGE}
+prefill_pulse_enable=${PREFILL_PULSE_ENABLE}
+prefill_n=${PREFILL_N}
+prefill_rps=${PREFILL_RPS}
+prefill_workers=${PREFILL_WORKERS}
+prefill_token_len=${PREFILL_TOKEN_LEN}
+prefill_timeout=${PREFILL_TIMEOUT}
+prefill_post_idle=${PREFILL_POST_IDLE}
 target_max=${TARGET_MAX}
 base_replicas=${BASE_REPLICAS}
 spike_n=${SPIKE_N}
@@ -142,16 +165,71 @@ echo "=== Start replica monitor ==="
 (
   for _ in $(seq 1 "$SAMPLES"); do
     ts="$(date +%H:%M:%S)"
-    spec="$(kubectl -n "$NS" get deploy decode -o jsonpath='{.spec.replicas}')"
-    ready="$(kubectl -n "$NS" get deploy decode -o jsonpath='{.status.readyReplicas}')"
-    avail="$(kubectl -n "$NS" get deploy decode -o jsonpath='{.status.availableReplicas}')"
-    echo "$ts decode=$spec/$ready/$avail"
+    p_spec="$(kubectl -n "$NS" get deploy prefill -o jsonpath='{.spec.replicas}')"
+    p_ready="$(kubectl -n "$NS" get deploy prefill -o jsonpath='{.status.readyReplicas}')"
+    p_avail="$(kubectl -n "$NS" get deploy prefill -o jsonpath='{.status.availableReplicas}')"
+    d_spec="$(kubectl -n "$NS" get deploy decode -o jsonpath='{.spec.replicas}')"
+    d_ready="$(kubectl -n "$NS" get deploy decode -o jsonpath='{.status.readyReplicas}')"
+    d_avail="$(kubectl -n "$NS" get deploy decode -o jsonpath='{.status.availableReplicas}')"
+    echo "$ts prefill=$p_spec/$p_ready/$p_avail decode=$d_spec/$d_ready/$d_avail"
     sleep "$SAMPLE_INTERVAL"
   done
 ) > "$trace_file" &
 MON_PID=$!
 
 echo "=== Spike phase ==="
+if [[ "$PREFILL_PULSE_ENABLE" == "1" ]]; then
+  echo "=== Prefill-only pulse phase ==="
+  kubectl -n "$NS" exec -i "$GATEWAY_POD" -- python3 - <<PY
+import time, uuid, grpc
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from common.proto import inference_pb2, inference_pb2_grpc
+
+N = int(${PREFILL_N})
+RPS = float(${PREFILL_RPS})
+W = int(${PREFILL_WORKERS})
+TOKEN_LEN = int(${PREFILL_TOKEN_LEN})
+TIMEOUT = int(${PREFILL_TIMEOUT})
+
+ch = grpc.insecure_channel("prefill:50052")
+stub = inference_pb2_grpc.PrefillServiceStub(ch)
+ok = 0
+err = 0
+base_tokens = [((i % 1000) + 10) for i in range(TOKEN_LEN)]
+
+def send(i):
+    global ok, err
+    req = inference_pb2.PrefillRequest(
+        request_id=f"prefill-pulse-{i}-{uuid.uuid4().hex[:8]}",
+        token_ids=base_tokens,
+        model_name="pulse",
+    )
+    try:
+        _ = stub.RunPrefill(req, timeout=TIMEOUT)
+        ok += 1
+    except Exception:
+        err += 1
+
+start = time.time()
+next_t = start
+futs = []
+with ThreadPoolExecutor(max_workers=W) as ex:
+    for i in range(N):
+        now = time.time()
+        if next_t > now:
+            time.sleep(next_t - now)
+        futs.append(ex.submit(send, i))
+        next_t += 1.0 / RPS
+    for f in as_completed(futs):
+        f.result()
+
+print(f"phase_prefill_pulse done total={N} ok={ok} err={err} duration_s={time.time()-start:.1f}", flush=True)
+PY
+  echo "=== Prefill pulse post-idle (${PREFILL_POST_IDLE}s) ==="
+  sleep "$PREFILL_POST_IDLE"
+fi
+
+echo "=== Decode spike phase ==="
 kubectl -n "$NS" exec -i "$GATEWAY_POD" -- python3 - <<PY
 import time, uuid, grpc, random
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -199,7 +277,7 @@ with ThreadPoolExecutor(max_workers=W) as ex:
     for f in as_completed(futs):
         f.result()
 
-print(f"phase_spike done total={N} ok={ok} err={err} duration_s={time.time()-start:.1f}", flush=True)
+print(f"phase_decode_spike done total={N} ok={ok} err={err} duration_s={time.time()-start:.1f}", flush=True)
 PY
 
 echo "=== Idle phase (${IDLE_SECONDS}s) ==="
@@ -213,12 +291,13 @@ tail -n 160 "$trace_file"
 
 echo "=== Controller decode events ==="
 elapsed="$(( $(date +%s) - start_epoch + 60 ))"
-kubectl -n "$NS" logs deploy/scaling-controller --since="${elapsed}s" | egrep 'Scaling decode|Oscillation|Scaling weights' || true
+kubectl -n "$NS" logs deploy/scaling-controller --since="${elapsed}s" | egrep 'Scaling prefill|Scaling decode|Oscillation|Scaling weights' || true
 
-echo "=== Analyze trajectory ==="
-analysis="$(awk -F'[=/]' '
+echo "=== Analyze decode trajectory ==="
+analysis="$(awk '
   /decode=/ {
-    spec=$2+0
+    if (match($0, /decode=([0-9]+)/, m) == 0) next
+    spec=m[1]+0
     arr[n]=spec
     n++
     if (spec > max) max=spec
@@ -241,13 +320,47 @@ analysis="$(awk -F'[=/]' '
 echo "$analysis"
 
 echo "=== Decode replica transitions ==="
-awk -F'[=/]' '
+awk '
   /decode=/ {
-    ts=$1; spec=$2+0
+    if (match($0, /decode=([0-9]+)/, m) == 0) next
+    ts=$1
+    spec=m[1]+0
     if (first || spec != prev) {
       printf("%s %d\n", ts, spec)
       prev=spec
       first=0
+    }
+  }
+' "$trace_file"
+
+echo "=== Prefill replica transitions ==="
+awk '
+  /prefill=/ {
+    if (match($0, /prefill=([0-9]+)/, m) == 0) next
+    ts=$1
+    spec=m[1]+0
+    if (first || spec != prev) {
+      printf("%s %d\n", ts, spec)
+      prev=spec
+      first=0
+    }
+  }
+' "$trace_file"
+
+echo "=== Analyze prefill trajectory ==="
+awk '
+  /prefill=/ {
+    if (match($0, /prefill=([0-9]+)/, m) == 0) next
+    spec=m[1]+0
+    if (n == 0 || spec < min) min=spec
+    if (spec > max) max=spec
+    n++
+  }
+  END {
+    if (n == 0) {
+      print "prefill: NO_DATA"
+    } else {
+      printf("prefill: min=%d max=%d samples=%d\n", min, max, n)
     }
   }
 ' "$trace_file"
