@@ -7,8 +7,8 @@
 #SBATCH -p gpu
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=rmose009@ucr.edu
-#SBATCH --output=%x-%j.out
-#SBATCH --error=%x-%j.err
+#SBATCH --output=logs/%x-%j.out
+#SBATCH --error=logs/%x-%j.err
 
 # Project root
 PROJECT_DIR="/data/SalmanAsif/RobbyMoseley/elastic/ElasticInference"
@@ -62,9 +62,13 @@ else
     exit 1
 fi
 
-# --- 4. Set config path ---
+# --- 4. Set config path and single-node overrides ---
 export CONFIG_PATH="$PROJECT_DIR/config.yaml"
+export REDIS_HOST="localhost"
+export PREFILL_HOST="localhost"
+export DECODE_HOST="localhost"
 echo "CONFIG_PATH=$CONFIG_PATH"
+echo "Hosts: redis=$REDIS_HOST prefill=$PREFILL_HOST decode=$DECODE_HOST"
 
 # --- 5. Launch prefill worker ---
 echo "=== Launching prefill worker ==="

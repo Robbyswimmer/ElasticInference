@@ -196,7 +196,7 @@ def serve(config=None):
     port = decode_cfg.get("port", 50053)
     prom_cfg = config.get("prometheus", {})
     if prom_cfg.get("enabled", True):
-        metrics_port = prom_cfg.get("port", 9090)
+        metrics_port = prom_cfg.get("decode_port", prom_cfg.get("port", 9091))
         start_http_server(metrics_port)
         logger.info("Prometheus metrics server on :%d", metrics_port)
 

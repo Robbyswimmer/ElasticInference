@@ -80,3 +80,5 @@ logging:
 prometheus:
   enabled: true
   port: 9090
+  prefill_port: 9090
+  decode_port: 9091
