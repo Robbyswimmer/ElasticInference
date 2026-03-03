@@ -7,21 +7,39 @@
 #SBATCH -p gpu
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=rmose009@ucr.edu
-#SBATCH --output=slurm-%j.out
-#SBATCH --error=slurm-%j.err
+#SBATCH --output=%x-%j.out
+#SBATCH --error=%x-%j.err
 
-set -euo pipefail
-
-echo "=== CS208 Autotune Experiment ==="
-echo "Job ID: $SLURM_JOB_ID"
-echo "Node:   $(hostname)"
-echo "Date:   $(date)"
-echo "GPU:    $(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null || echo 'N/A')"
-
-# Project root (where this script lives is scripts/, go up one level)
-PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+# Project root — use SLURM_SUBMIT_DIR (the directory you ran sbatch from)
+PROJECT_DIR="${SLURM_SUBMIT_DIR:-$(pwd)}"
 cd "$PROJECT_DIR"
-echo "Working directory: $PROJECT_DIR"
+
+echo "=== Autotune Experiment ==="
+echo "Job ID:    $SLURM_JOB_ID"
+echo "Node:      $(hostname)"
+echo "Date:      $(date)"
+echo "Directory: $PROJECT_DIR"
+echo "GPU:       $(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null || echo 'N/A')"
+
+# Create directories upfront
+mkdir -p logs results
+
+# --- Cleanup trap (registered early so it always runs) ---
+PREFILL_PID=""
+DECODE_PID=""
+GATEWAY_PID=""
+cleanup() {
+    echo "=== Cleaning up ==="
+    [ -n "$GATEWAY_PID" ] && kill $GATEWAY_PID 2>/dev/null || true
+    [ -n "$PREFILL_PID" ] && kill $PREFILL_PID 2>/dev/null || true
+    [ -n "$DECODE_PID" ]  && kill $DECODE_PID 2>/dev/null || true
+    redis-cli shutdown 2>/dev/null || true
+    echo "Cleanup complete"
+}
+trap cleanup EXIT
+
+# Now enable strict mode (after trap is set)
+set -euo pipefail
 
 # --- 1. Activate conda environment ---
 echo "=== Activating conda env cs208-env ==="
@@ -32,13 +50,11 @@ conda activate cs208-env
 echo "=== Installing dependencies ==="
 pip install -r requirements.txt
 
-# --- 3. Install & start Redis ---
+# --- 3. Start Redis ---
 echo "=== Setting up Redis ==="
-conda install -y redis
 redis-server --daemonize yes
 sleep 2
 
-# Verify Redis
 if redis-cli ping | grep -q PONG; then
     echo "Redis is running"
 else
@@ -50,75 +66,56 @@ fi
 export CONFIG_PATH="$PROJECT_DIR/config.yaml"
 echo "CONFIG_PATH=$CONFIG_PATH"
 
-# --- 5. Create logs directory ---
-mkdir -p logs results
-
-# --- 6. Launch prefill worker ---
+# --- 5. Launch prefill worker ---
 echo "=== Launching prefill worker ==="
 python -m workers.prefill > logs/prefill.log 2>&1 &
 PREFILL_PID=$!
 echo "Prefill worker PID: $PREFILL_PID"
 
-# --- 7. Launch decode worker ---
+# --- 6. Launch decode worker ---
 echo "=== Launching decode worker ==="
 python -m workers.decode > logs/decode.log 2>&1 &
 DECODE_PID=$!
 echo "Decode worker PID: $DECODE_PID"
 
-# --- 8. Wait for model loading ---
+# --- 7. Wait for model loading ---
 echo "=== Waiting 60s for model loading ==="
 sleep 60
 
-# Check workers are still running
 if ! kill -0 $PREFILL_PID 2>/dev/null; then
-    echo "ERROR: Prefill worker died. Check logs/prefill.log"
+    echo "ERROR: Prefill worker died. Log:"
     cat logs/prefill.log
     exit 1
 fi
 if ! kill -0 $DECODE_PID 2>/dev/null; then
-    echo "ERROR: Decode worker died. Check logs/decode.log"
+    echo "ERROR: Decode worker died. Log:"
     cat logs/decode.log
     exit 1
 fi
 
-# --- 9. Launch gateway ---
+# --- 8. Launch gateway ---
 echo "=== Launching gateway ==="
 python -m gateway.server > logs/gateway.log 2>&1 &
 GATEWAY_PID=$!
 echo "Gateway PID: $GATEWAY_PID"
 
-# --- 10. Wait for gateway to connect ---
 echo "=== Waiting 15s for gateway startup ==="
 sleep 15
 
 if ! kill -0 $GATEWAY_PID 2>/dev/null; then
-    echo "ERROR: Gateway died. Check logs/gateway.log"
+    echo "ERROR: Gateway died. Log:"
     cat logs/gateway.log
     exit 1
 fi
 
-# --- 11. Run autotune experiment ---
+# --- 9. Run autotune experiment ---
 echo "=== Running autotune experiment ==="
 python scripts/run_autotune_experiment.py
 EXPERIMENT_EXIT=$?
 
-# --- 12. Cleanup ---
-echo "=== Cleaning up ==="
-cleanup() {
-    echo "Killing background processes..."
-    kill $GATEWAY_PID 2>/dev/null || true
-    kill $PREFILL_PID 2>/dev/null || true
-    kill $DECODE_PID 2>/dev/null || true
-    redis-cli shutdown 2>/dev/null || true
-    echo "Cleanup complete"
-}
-trap cleanup EXIT
-cleanup
-
-# --- 13. Copy results ---
-OUTPUT_DIR="$PROJECT_DIR/results"
-echo "=== Results saved to $OUTPUT_DIR ==="
-ls -la "$OUTPUT_DIR"/
+# --- 10. Results ---
+echo "=== Results saved to $PROJECT_DIR/results ==="
+ls -la results/
 
 echo ""
 echo "=== Experiment finished (exit code: $EXPERIMENT_EXIT) ==="
