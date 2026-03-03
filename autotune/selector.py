@@ -58,7 +58,9 @@ class ConfigSelector:
         candidates = [(k, v) for k, v in self._table.items() if k[0] == stage]
         if not candidates:
             logger.warning("No profile data for %s, using defaults", stage)
-            return self.select.__wrapped__(self, stage, gpu_pct) if hasattr(self.select, '__wrapped__') else {}
+            if stage == "prefill":
+                return {"batch_size": self._config["prefill"].get("batch_size", 8)}
+            return {"batch_size": self._config["decode"].get("max_batch_size", 32)}
 
         nearest = min(candidates, key=lambda x: abs(x[0][1] - gpu_pct))
         logger.debug("ConfigSelector: %s @ %d%% -> nearest match %d%%", stage, gpu_pct, nearest[0][1])
