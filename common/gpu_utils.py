@@ -15,7 +15,8 @@ def get_gpu_memory(device=0):
     """Return (total_mb, used_mb, free_mb) for a CUDA device."""
     if not torch.cuda.is_available():
         return (0, 0, 0)
-    total = torch.cuda.get_device_properties(device).total_mem / (1024 ** 2)
+    props = torch.cuda.get_device_properties(device)
+    total = getattr(props, 'total_memory', getattr(props, 'total_mem', 0)) / (1024 ** 2)
     reserved = torch.cuda.memory_reserved(device) / (1024 ** 2)
     allocated = torch.cuda.memory_allocated(device) / (1024 ** 2)
     free = total - reserved
