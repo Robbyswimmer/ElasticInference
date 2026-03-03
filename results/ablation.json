@@ -1,0 +1,37 @@
+{
+  "full_system": {
+    "e2e_p50_ms": 1370.0,
+    "e2e_p95_ms": 2900.2,
+    "e2e_p99_ms": 3055.7,
+    "throughput_tps": 96.9,
+    "gpu_seconds_per_request": 1.370
+  },
+  "no_autotune": {
+    "e2e_p50_ms": 14373.0,
+    "e2e_p95_ms": 19474.9,
+    "e2e_p99_ms": 19486.4,
+    "throughput_tps": 115.4,
+    "gpu_seconds_per_request": 14.373
+  },
+  "no_anti_oscillation": {
+    "e2e_p50_ms": 2037.0,
+    "e2e_p95_ms": 4125.4,
+    "e2e_p99_ms": 4156.0,
+    "throughput_tps": 128.1,
+    "gpu_seconds_per_request": 2.037
+  },
+  "no_moe": {
+    "e2e_p50_ms": 2582.0,
+    "e2e_p95_ms": 4593.9,
+    "e2e_p99_ms": 4741.4,
+    "throughput_tps": 124.2,
+    "gpu_seconds_per_request": 2.582
+  },
+  "static_baseline": {
+    "e2e_p50_ms": 2832.0,
+    "e2e_p95_ms": 5693.1,
+    "e2e_p99_ms": 5990.8,
+    "throughput_tps": 114.7,
+    "gpu_seconds_per_request": 2.832
+  }
+}

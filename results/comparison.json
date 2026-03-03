@@ -1,0 +1,32 @@
+{
+  "autotune_off": {
+    "num_requests": 30,
+    "e2e_p50_ms": 7918.7,
+    "e2e_p95_ms": 11784.0,
+    "e2e_p99_ms": 11888.3,
+    "throughput_tps": 116.6,
+    "gpu_seconds_per_request": 7.168,
+    "prefill_p50_ms": 14.5,
+    "prefill_p95_ms": 22.1,
+    "decode_p50_ms": 7904.2,
+    "decode_p95_ms": 11761.9
+  },
+  "autotune_on": {
+    "num_requests": 30,
+    "e2e_p50_ms": 6765.2,
+    "e2e_p95_ms": 10684.8,
+    "e2e_p99_ms": 10743.4,
+    "throughput_tps": 126.5,
+    "gpu_seconds_per_request": 6.402,
+    "prefill_p50_ms": 13.8,
+    "prefill_p95_ms": 20.5,
+    "decode_p50_ms": 6751.4,
+    "decode_p95_ms": 10664.3
+  },
+  "improvement": {
+    "e2e_p95_ms": {"off": 11784.0, "on": 10684.8, "change_pct": 9.33},
+    "e2e_p99_ms": {"off": 11888.3, "on": 10743.4, "change_pct": 9.63},
+    "throughput_tps": {"off": 116.6, "on": 126.5, "change_pct": 8.49},
+    "gpu_seconds_per_request": {"off": 7.168, "on": 6.402, "change_pct": 10.69}
+  }
+}
