@@ -34,13 +34,13 @@ fi
 
 echo "Python: $(python --version) @ $(which python)"
 
-# Install PyTorch with CUDA (use conda for proper CUDA toolkit)
-echo "=== Installing PyTorch with CUDA ==="
-conda install -y pytorch torchvision torchaudio pytorch-cuda=12.1 -c pytorch -c nvidia
-
-# Install Redis
+# Install Redis via conda
 echo "=== Installing Redis ==="
 conda install -y redis
+
+# Install PyTorch with CUDA via pip (avoids conda/pip MKL conflicts)
+echo "=== Installing PyTorch with CUDA ==="
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 
 # Install pip dependencies
 echo "=== Installing pip dependencies ==="
