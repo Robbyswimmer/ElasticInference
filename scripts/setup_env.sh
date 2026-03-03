@@ -40,7 +40,7 @@ conda install -y redis
 
 # Install PyTorch with CUDA via pip (avoids conda/pip MKL conflicts)
 echo "=== Installing PyTorch with CUDA ==="
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+pip install 'torch>=2.6' torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 
 # Install pip dependencies
 echo "=== Installing pip dependencies ==="
