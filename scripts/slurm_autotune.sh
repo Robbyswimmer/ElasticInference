@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name="CS208-Autotune"
+#SBATCH --job-name="autotune"
 #SBATCH --time=04:00:00
 #SBATCH --mem=64G
 #SBATCH --cpus-per-task=8
