@@ -64,6 +64,15 @@ def test_env_overrides():
         del os.environ["GATEWAY_PORT"]
 
 
+def test_env_overrides_k8s_service_link_port():
+    os.environ["REDIS_PORT"] = "tcp://10.100.79.239:6379"
+    try:
+        config = load_config()
+        assert config["redis"]["port"] == 6379
+    finally:
+        del os.environ["REDIS_PORT"]
+
+
 def test_missing_config_raises():
     with pytest.raises(FileNotFoundError):
         load_config("/nonexistent/config.yaml")

@@ -40,6 +40,27 @@ class ScalingController:
         self._interval = scaling.get("metrics_interval", 5)
         self._cooldown = scaling.get("cooldown", 30)
         self._ema_alpha = scaling.get("ema_alpha", 0.3)
+        self._metrics_timeout = scaling.get("metrics_timeout_seconds", 8)
+        self._downscale_signal = scaling.get("downscale_signal", "ema")
+        self._service_time_baseline_ms = scaling.get("service_time_baseline_ms", 100.0)
+        self._fast_scale_up = bool(scaling.get("fast_scale_up", True))
+        self._fast_scale_up_factor = float(scaling.get("fast_scale_up_factor", 1.5))
+        self._fast_scale_up_step = int(scaling.get("fast_scale_up_step", 2))
+        self._osc_backoff_factor = float(scaling.get("oscillation_backoff_factor", 1.5))
+        self._max_adaptive_cooldown = int(scaling.get("max_adaptive_cooldown", 120))
+        self._up_consecutive_default = int(scaling.get("scale_up_consecutive_required", 1))
+        self._down_consecutive_default = int(scaling.get("scale_down_consecutive_required", 2))
+        weights = scaling.get("signal_weights", {})
+        self._w_util = float(weights.get("utilization", 0.5))
+        self._w_service = float(weights.get("service_time", 0.3))
+        self._w_arrival = float(weights.get("arrival_rate", 0.2))
+        w_sum = self._w_util + self._w_service + self._w_arrival
+        if w_sum > 0:
+            self._w_util /= w_sum
+            self._w_service /= w_sum
+            self._w_arrival /= w_sum
+        else:
+            self._w_util, self._w_service, self._w_arrival = 0.5, 0.3, 0.2
 
         # Scaling event log for eval reproducibility
         self._scaling_events = []
@@ -48,29 +69,60 @@ class ScalingController:
         self._selector = ConfigSelector(config)
 
         self._stages = {}
+        has_kubectl = shutil.which("kubectl") is not None
         for stage in ("prefill", "decode"):
             s_cfg = scaling[stage]
             port = config[stage]["port"]
             host = config[stage].get("connect_host", config[stage].get("host", "localhost"))
+            current = self._query_deployment_replicas(stage) if has_kubectl else s_cfg["min_replicas"]
             self._stages[stage] = {
                 "target": f"{host}:{port}",
                 "min_replicas": s_cfg["min_replicas"],
                 "max_replicas": s_cfg["max_replicas"],
                 "scale_up_threshold": s_cfg["scale_up_threshold"],
                 "scale_down_threshold": s_cfg["scale_down_threshold"],
+                "scale_up_consecutive_required": int(
+                    s_cfg.get("scale_up_consecutive_required", self._up_consecutive_default)
+                ),
+                "scale_down_consecutive_required": int(
+                    s_cfg.get("scale_down_consecutive_required", self._down_consecutive_default)
+                ),
                 "ema_load": 0.0,
                 "last_scale_time": 0.0,
-                "current_replicas": 1,
+                "current_replicas": max(s_cfg["min_replicas"], min(s_cfg["max_replicas"], int(current))),
                 # Oscillation detection: track recent scale directions
                 "scale_history": deque(maxlen=10),  # +1 = up, -1 = down
                 "adaptive_cooldown": scaling.get("cooldown", 30),
                 # Multi-metric EMA
                 "ema_service_time": 0.0,
                 "ema_arrival_rate": 0.0,
+                "high_load_streak": 0,
+                "low_load_streak": 0,
             }
 
-        if shutil.which("kubectl") is None:
+        if not has_kubectl:
             logger.warning("kubectl binary not found; scaling actions will fail until it is installed")
+        else:
+            logger.info(
+                "Scaling weights util=%.2f service=%.2f arrival=%.2f baseline=%.1fms",
+                self._w_util, self._w_service, self._w_arrival, self._service_time_baseline_ms,
+            )
+
+    def _query_deployment_replicas(self, stage):
+        """Read current replica count from Kubernetes deployment spec."""
+        try:
+            out = subprocess.run(
+                [
+                    "kubectl", "-n", "llm-inference", "get", "deployment", stage,
+                    "-o", "jsonpath={.spec.replicas}",
+                ],
+                check=True, capture_output=True, text=True,
+            )
+            value = out.stdout.strip()
+            return int(value) if value else 1
+        except Exception as e:
+            logger.warning("Failed to query current replicas for %s: %s", stage, e)
+            return 1
 
     @property
     def scaling_events(self):
@@ -86,7 +138,7 @@ class ScalingController:
                 stub = inference_pb2_grpc.PrefillServiceStub(channel)
             else:
                 stub = inference_pb2_grpc.DecodeServiceStub(channel)
-            resp = stub.GetMetrics(inference_pb2.MetricsRequest(), timeout=2)
+            resp = stub.GetMetrics(inference_pb2.MetricsRequest(), timeout=self._metrics_timeout)
             channel.close()
             return resp
         except grpc.RpcError as e:
@@ -107,12 +159,12 @@ class ScalingController:
         # Signal 1: utilization (active / capacity)
         utilization = metrics.active_requests / max(capacity, 1)
 
-        # Signal 2: service time pressure (normalized by a baseline of 100ms)
+        # Signal 2: service time pressure (normalized by a configurable baseline)
         alpha = self._ema_alpha
         info["ema_service_time"] = (
             alpha * metrics.avg_service_time_ms + (1 - alpha) * info["ema_service_time"]
         )
-        stime_signal = min(info["ema_service_time"] / 100.0, 2.0)  # cap at 2x
+        stime_signal = min(info["ema_service_time"] / max(self._service_time_baseline_ms, 1e-6), 2.0)
 
         # Signal 3: arrival rate pressure
         info["ema_arrival_rate"] = (
@@ -123,7 +175,11 @@ class ScalingController:
         arrival_signal = info["ema_arrival_rate"] / max(effective_capacity, 1)
 
         # Weighted composite
-        composite = 0.5 * utilization + 0.3 * stime_signal + 0.2 * arrival_signal
+        composite = (
+            self._w_util * utilization +
+            self._w_service * stime_signal +
+            self._w_arrival * arrival_signal
+        )
         return composite
 
     def _detect_oscillation(self, stage):
@@ -169,7 +225,10 @@ class ScalingController:
 
             # Adaptive cooldown: increase if oscillating
             if self._detect_oscillation(stage):
-                info["adaptive_cooldown"] = min(info["adaptive_cooldown"] * 1.5, 120)
+                info["adaptive_cooldown"] = min(
+                    int(info["adaptive_cooldown"] * self._osc_backoff_factor),
+                    self._max_adaptive_cooldown,
+                )
                 logger.warning(
                     "Oscillation detected for %s — increasing cooldown to %.0fs",
                     stage, info["adaptive_cooldown"],
@@ -218,13 +277,34 @@ class ScalingController:
                 continue
 
             current = info["current_replicas"]
+            down_signal = ema if self._downscale_signal == "ema" else load
             if ema > info["scale_up_threshold"]:
+                info["high_load_streak"] += 1
+                info["low_load_streak"] = 0
+            elif down_signal < info["scale_down_threshold"]:
+                info["low_load_streak"] += 1
+                info["high_load_streak"] = 0
+            else:
+                info["high_load_streak"] = 0
+                info["low_load_streak"] = 0
+
+            if info["high_load_streak"] >= info["scale_up_consecutive_required"]:
                 # Fast scale-up: +2 if far above threshold, +1 otherwise
-                step = 2 if ema > info["scale_up_threshold"] * 1.5 else 1
+                if self._fast_scale_up and ema > info["scale_up_threshold"] * self._fast_scale_up_factor:
+                    step = self._fast_scale_up_step
+                else:
+                    step = 1
                 self._scale(stage, current + step)
-            elif ema < info["scale_down_threshold"] and current > info["min_replicas"]:
+                info["high_load_streak"] = 0
+                info["low_load_streak"] = 0
+            elif (
+                info["low_load_streak"] >= info["scale_down_consecutive_required"]
+                and current > info["min_replicas"]
+            ):
                 # Slow scale-down: always -1
                 self._scale(stage, current - 1)
+                info["high_load_streak"] = 0
+                info["low_load_streak"] = 0
 
             # Inner loop: autotune config selection based on current GPU%
             if self._selector.enabled:
@@ -234,9 +314,10 @@ class ScalingController:
                     self._apply_autotune_config(stage, selected)
 
             logger.debug(
-                "%s: load=%.2f ema=%.2f stime=%.1fms arr_rate=%.1f replicas=%d",
+                "%s: load=%.2f ema=%.2f stime=%.1fms arr_rate=%.1f replicas=%d streak(up/down)=%d/%d",
                 stage, load, ema, info["ema_service_time"],
                 info["ema_arrival_rate"], info["current_replicas"],
+                info["high_load_streak"], info["low_load_streak"],
             )
 
     def export_events(self, path="scaling_events.json"):

@@ -6,6 +6,10 @@ import grpc
 import torch
 from prometheus_client import start_http_server
 from transformers import AutoModelForCausalLM, AutoTokenizer
+try:
+    from transformers.cache_utils import DynamicCache
+except Exception:  # pragma: no cover - compatibility with older transformers
+    DynamicCache = None
 
 from common import load_config
 from common.proto import inference_pb2, inference_pb2_grpc
@@ -84,18 +88,27 @@ class DecodeServicer(inference_pb2_grpc.DecodeServiceServicer):
         self._metrics.start_request()
         t_start = time.perf_counter()
         tokens_generated = 0
-
+        finalized = False
         try:
             # Retrieve KV cache from Redis
             kv_cache = self._kv_store.get(request.request_id, device=self._device)
             if kv_cache is None:
                 context.set_code(grpc.StatusCode.NOT_FOUND)
                 context.set_details(f"KV cache not found for {request.request_id}")
-                self._metrics.end_request((time.perf_counter() - t_start) * 1000)
                 return
 
-            # Convert list of (K, V) tuples back to HuggingFace-compatible format
-            past_key_values = tuple(kv_cache)
+            # Convert stored legacy KV tuples into a transformers cache object.
+            # transformers>=5 expects DynamicCache with get_seq_length().
+            legacy_past = tuple(kv_cache)
+            if DynamicCache is not None:
+                cache_obj = DynamicCache()
+                for layer_idx, layer_kv in enumerate(legacy_past):
+                    key_states, value_states = layer_kv
+                    cache_obj.update(key_states, value_states, layer_idx)
+                past_key_values = cache_obj
+            else:
+                # Fallback for very old transformers that still accept tuple cache.
+                past_key_values = legacy_past
 
             max_tokens = request.max_tokens if request.max_tokens > 0 else self._max_tokens_default
             current_token_id = request.first_token_id
@@ -140,22 +153,25 @@ class DecodeServicer(inference_pb2_grpc.DecodeServiceServicer):
                 generated_ids.append(next_token_id)
 
             elapsed_ms = (time.perf_counter() - t_start) * 1000
-            self._metrics.end_request(elapsed_ms)
-
-            # Clean up KV cache from Redis
-            self._kv_store.delete(request.request_id)
+            finalized = True
             logger.info(
                 "Decode %s — %d tokens, %.1fms total",
                 request.request_id, tokens_generated, elapsed_ms,
             )
 
         except Exception as e:
-            elapsed_ms = (time.perf_counter() - t_start) * 1000
-            self._metrics.end_request(elapsed_ms)
-            self._kv_store.delete(request.request_id)
             logger.exception("Decode failed for %s: %s", request.request_id, e)
             context.set_code(grpc.StatusCode.INTERNAL)
             context.set_details(str(e))
+        finally:
+            elapsed_ms = (time.perf_counter() - t_start) * 1000
+            self._metrics.end_request(elapsed_ms)
+            self._kv_store.delete(request.request_id)
+            if not finalized:
+                logger.info(
+                    "Decode %s finalized early — %d tokens, %.1fms total",
+                    request.request_id, tokens_generated, elapsed_ms,
+                )
 
     def GetMetrics(self, request, context):
         active, arrival_rate, avg_time = self._metrics.snapshot()

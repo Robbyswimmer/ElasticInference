@@ -12,14 +12,14 @@ gateway:
 
 prefill:
   host: 0.0.0.0
-  connect_host: localhost  # K8s override: "prefill" (service name)
+  connect_host: prefill  # K8s override: "prefill" (service name)
   port: 50052
   batch_size: 8
   max_concurrent: 4
 
 decode:
   host: 0.0.0.0
-  connect_host: localhost  # K8s override: "decode" (service name)
+  connect_host: decode  # K8s override: "decode" (service name)
   port: 50053
   max_batch_size: 32
   max_new_tokens: 512
@@ -28,7 +28,7 @@ decode:
   moe_top_k: 2
 
 redis:
-  host: localhost
+  host: redis
   port: 6379
   db: 0
   ttl_seconds: 300
@@ -36,18 +36,33 @@ redis:
 
 scaling:
   metrics_interval: 5
-  cooldown: 30
-  ema_alpha: 0.3
+  cooldown: 75
+  ema_alpha: 0.18
+  metrics_timeout_seconds: 8
+  downscale_signal: instant
+  service_time_baseline_ms: 300
+  fast_scale_up: true
+  fast_scale_up_factor: 1.5
+  fast_scale_up_step: 2
+  oscillation_backoff_factor: 1.5
+  max_adaptive_cooldown: 240
+  scale_up_consecutive_required: 1
+  scale_down_consecutive_required: 2
+  signal_weights:
+    utilization: 0.82
+    service_time: 0.03
+    arrival_rate: 0.15
   prefill:
     min_replicas: 1
-    max_replicas: 4
-    scale_up_threshold: 0.8
-    scale_down_threshold: 0.3
+    max_replicas: 2
+    scale_up_threshold: 0.02
+    scale_down_threshold: 0.005
   decode:
     min_replicas: 1
-    max_replicas: 8
-    scale_up_threshold: 0.8
-    scale_down_threshold: 0.3
+    max_replicas: 5
+    scale_up_threshold: 0.2
+    scale_down_threshold: 0.05
+    scale_down_consecutive_required: 2
 
 autotune:
   enabled: false
