@@ -247,7 +247,7 @@ def serve(config=None):
     port = gw_cfg.get("port", 50051)
     prom_cfg = config.get("prometheus", {})
     if prom_cfg.get("enabled", True):
-        start_metrics_server(prom_cfg.get("port", 9090))
+        start_metrics_server(prom_cfg.get("gateway_port", prom_cfg.get("port", 9090)))
 
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=gw_cfg.get("max_queue_size", 256)))
     inference_pb2_grpc.add_GatewayServiceServicer_to_server(GatewayServicer(config), server)
