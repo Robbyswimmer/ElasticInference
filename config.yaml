@@ -55,8 +55,8 @@ scaling:
   prefill:
     min_replicas: 1
     max_replicas: 2
-    scale_up_threshold: 1.1
-    scale_down_threshold: 0.25
+    scale_up_threshold: 0.02
+    scale_down_threshold: 0.005
   decode:
     min_replicas: 1
     max_replicas: 5
