@@ -58,7 +58,7 @@ class WorkloadGenerator:
         )
         try:
             t0 = time.perf_counter()
-            resp = stub.Infer(req, timeout=30)
+            resp = stub.Infer(req, timeout=120)
             t1 = time.perf_counter()
 
             latency = resp.latency

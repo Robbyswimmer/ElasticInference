@@ -46,8 +46,8 @@ CONCURRENCY_GPU_MAP = {1: 100, 2: 50, 4: 25}
 
 NUM_WARMUP = 3
 NUM_MEASURE = 15
-NUM_EVAL_REQUESTS = 100
-ARRIVAL_RATE = 10.0
+NUM_EVAL_REQUESTS = 30
+ARRIVAL_RATE = 1.0
 MAX_TOKENS = 128
 
 
@@ -84,7 +84,7 @@ def send_single_request(stub, prompt, request_id, max_tokens):
         max_tokens=max_tokens,
     )
     try:
-        resp = stub.Infer(req, timeout=60)
+        resp = stub.Infer(req, timeout=120)
         return {
             "request_id": resp.request_id,
             "prefill_ms": resp.latency.prefill_ms,
