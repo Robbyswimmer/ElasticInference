@@ -1,0 +1,27 @@
+{
+  "samples": 151,
+  "decode_replicas": {
+    "min": 1.0,
+    "max": 5.0,
+    "p95": 5.0
+  },
+  "decode_latency_ms": {
+    "p50": 10000.0,
+    "p95": 10000.0,
+    "max": 10000.0
+  },
+  "e2e_latency_ms": {
+    "p50": 28918.918918918916,
+    "p95": 29000.0,
+    "max": 29000.0
+  },
+  "qps": {
+    "avg": 0.47200481637567726,
+    "max": 4.363636363636363
+  },
+  "scale_events": {
+    "decode_scale_up_events": 0.0,
+    "decode_scale_down_events": 3.027,
+    "decode_oscillation_events": 0.0
+  }
+}

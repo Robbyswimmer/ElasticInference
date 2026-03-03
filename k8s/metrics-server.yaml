@@ -12,12 +12,18 @@ spec:
     metadata:
       labels:
         app: scaling-controller
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9100"
     spec:
       serviceAccountName: scaling-controller
       containers:
         - name: controller
           image: llm-inference/controller:latest
           imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9100
+              name: metrics
           env:
             - name: REDIS_HOST
               value: "redis"
@@ -28,6 +34,19 @@ spec:
             limits:
               cpu: "500m"
               memory: "512Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: scaling-controller
+  namespace: llm-inference
+spec:
+  selector:
+    app: scaling-controller
+  ports:
+    - port: 9100
+      targetPort: 9100
+      name: metrics
 ---
 apiVersion: v1
 kind: ServiceAccount
