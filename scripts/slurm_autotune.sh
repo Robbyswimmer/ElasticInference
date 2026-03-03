@@ -10,8 +10,8 @@
 #SBATCH --output=%x-%j.out
 #SBATCH --error=%x-%j.err
 
-# Project root — use SLURM_SUBMIT_DIR (the directory you ran sbatch from)
-PROJECT_DIR="${SLURM_SUBMIT_DIR:-$(pwd)}"
+# Project root
+PROJECT_DIR="/data/SalmanAsif/RobbyMoseley/elastic/ElasticInference"
 cd "$PROJECT_DIR"
 
 echo "=== Autotune Experiment ==="
