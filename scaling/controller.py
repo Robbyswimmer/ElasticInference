@@ -6,12 +6,90 @@ import shutil
 from collections import deque
 
 import grpc
+from prometheus_client import Counter, Gauge, start_http_server
 
 from common import load_config
 from common.proto import inference_pb2, inference_pb2_grpc
 from autotune.selector import ConfigSelector
 
 logger = logging.getLogger(__name__)
+
+
+SCALER_TARGET_REPLICAS = Gauge(
+    "scaler_target_replicas",
+    "Target replica count selected by the scaling controller",
+    ["stage"],
+)
+SCALER_CURRENT_REPLICAS = Gauge(
+    "scaler_current_replicas",
+    "Current replica count tracked by the scaling controller",
+    ["stage"],
+)
+SCALER_EMA_LOAD = Gauge(
+    "scaler_ema_load",
+    "Smoothed composite load signal used by the scaling controller",
+    ["stage"],
+)
+SCALER_INSTANT_LOAD = Gauge(
+    "scaler_instant_load",
+    "Instant composite load signal before EMA smoothing",
+    ["stage"],
+)
+SCALER_UTILIZATION_SIGNAL = Gauge(
+    "scaler_utilization_signal",
+    "Utilization signal (active requests normalized by stage capacity)",
+    ["stage"],
+)
+SCALER_SERVICE_TIME_SIGNAL = Gauge(
+    "scaler_service_time_signal",
+    "Service-time pressure signal used by the scaling controller",
+    ["stage"],
+)
+SCALER_ARRIVAL_SIGNAL = Gauge(
+    "scaler_arrival_signal",
+    "Arrival-rate pressure signal used by the scaling controller",
+    ["stage"],
+)
+SCALER_COOLDOWN_SECONDS = Gauge(
+    "scaler_cooldown_seconds",
+    "Current adaptive cooldown in seconds",
+    ["stage"],
+)
+SCALER_HIGH_LOAD_STREAK = Gauge(
+    "scaler_high_load_streak",
+    "Consecutive high-load streak count",
+    ["stage"],
+)
+SCALER_LOW_LOAD_STREAK = Gauge(
+    "scaler_low_load_streak",
+    "Consecutive low-load streak count",
+    ["stage"],
+)
+SCALER_SCALE_UP_THRESHOLD = Gauge(
+    "scaler_scale_up_threshold",
+    "Scale-up threshold for each stage",
+    ["stage"],
+)
+SCALER_SCALE_DOWN_THRESHOLD = Gauge(
+    "scaler_scale_down_threshold",
+    "Scale-down threshold for each stage",
+    ["stage"],
+)
+SCALER_LAST_SCALE_EPOCH_SECONDS = Gauge(
+    "scaler_last_scale_epoch_seconds",
+    "Unix timestamp of the most recent scaling action",
+    ["stage"],
+)
+SCALER_SCALE_EVENTS_TOTAL = Counter(
+    "scaler_scale_events_total",
+    "Total number of scaling events",
+    ["stage", "direction"],
+)
+SCALER_OSCILLATION_EVENTS_TOTAL = Counter(
+    "scaler_oscillation_events_total",
+    "Total number of oscillation detections",
+    ["stage"],
+)
 
 
 class ScalingController:
@@ -50,6 +128,8 @@ class ScalingController:
         self._max_adaptive_cooldown = int(scaling.get("max_adaptive_cooldown", 120))
         self._up_consecutive_default = int(scaling.get("scale_up_consecutive_required", 1))
         self._down_consecutive_default = int(scaling.get("scale_down_consecutive_required", 2))
+        self._prom_enabled = bool(scaling.get("prometheus_enabled", config.get("prometheus", {}).get("enabled", True)))
+        self._prom_port = int(scaling.get("prometheus_port", 9100))
         weights = scaling.get("signal_weights", {})
         self._w_util = float(weights.get("utilization", 0.5))
         self._w_service = float(weights.get("service_time", 0.3))
@@ -98,7 +178,24 @@ class ScalingController:
                 "ema_arrival_rate": 0.0,
                 "high_load_streak": 0,
                 "low_load_streak": 0,
+                "last_utilization": 0.0,
+                "last_service_signal": 0.0,
+                "last_arrival_signal": 0.0,
+                "last_instant_load": 0.0,
             }
+            SCALER_TARGET_REPLICAS.labels(stage=stage).set(float(self._stages[stage]["current_replicas"]))
+            SCALER_CURRENT_REPLICAS.labels(stage=stage).set(float(self._stages[stage]["current_replicas"]))
+            SCALER_EMA_LOAD.labels(stage=stage).set(0.0)
+            SCALER_INSTANT_LOAD.labels(stage=stage).set(0.0)
+            SCALER_UTILIZATION_SIGNAL.labels(stage=stage).set(0.0)
+            SCALER_SERVICE_TIME_SIGNAL.labels(stage=stage).set(0.0)
+            SCALER_ARRIVAL_SIGNAL.labels(stage=stage).set(0.0)
+            SCALER_COOLDOWN_SECONDS.labels(stage=stage).set(float(self._cooldown))
+            SCALER_HIGH_LOAD_STREAK.labels(stage=stage).set(0.0)
+            SCALER_LOW_LOAD_STREAK.labels(stage=stage).set(0.0)
+            SCALER_SCALE_UP_THRESHOLD.labels(stage=stage).set(float(self._stages[stage]["scale_up_threshold"]))
+            SCALER_SCALE_DOWN_THRESHOLD.labels(stage=stage).set(float(self._stages[stage]["scale_down_threshold"]))
+            SCALER_LAST_SCALE_EPOCH_SECONDS.labels(stage=stage).set(0.0)
 
         if not has_kubectl:
             logger.warning("kubectl binary not found; scaling actions will fail until it is installed")
@@ -180,6 +277,14 @@ class ScalingController:
             self._w_service * stime_signal +
             self._w_arrival * arrival_signal
         )
+        info["last_utilization"] = utilization
+        info["last_service_signal"] = stime_signal
+        info["last_arrival_signal"] = arrival_signal
+        info["last_instant_load"] = composite
+        SCALER_UTILIZATION_SIGNAL.labels(stage=stage).set(float(utilization))
+        SCALER_SERVICE_TIME_SIGNAL.labels(stage=stage).set(float(stime_signal))
+        SCALER_ARRIVAL_SIGNAL.labels(stage=stage).set(float(arrival_signal))
+        SCALER_INSTANT_LOAD.labels(stage=stage).set(float(composite))
         return composite
 
     def _detect_oscillation(self, stage):
@@ -212,6 +317,12 @@ class ScalingController:
             info["current_replicas"] = replicas
             info["last_scale_time"] = time.monotonic()
             info["scale_history"].append(direction)
+            SCALER_SCALE_EVENTS_TOTAL.labels(
+                stage=stage, direction="up" if direction > 0 else "down",
+            ).inc()
+            SCALER_TARGET_REPLICAS.labels(stage=stage).set(float(replicas))
+            SCALER_CURRENT_REPLICAS.labels(stage=stage).set(float(replicas))
+            SCALER_LAST_SCALE_EPOCH_SECONDS.labels(stage=stage).set(float(time.time()))
 
             # Log event for eval
             self._scaling_events.append({
@@ -229,12 +340,14 @@ class ScalingController:
                     int(info["adaptive_cooldown"] * self._osc_backoff_factor),
                     self._max_adaptive_cooldown,
                 )
+                SCALER_OSCILLATION_EVENTS_TOTAL.labels(stage=stage).inc()
                 logger.warning(
                     "Oscillation detected for %s — increasing cooldown to %.0fs",
                     stage, info["adaptive_cooldown"],
                 )
             else:
                 info["adaptive_cooldown"] = self._cooldown
+            SCALER_COOLDOWN_SECONDS.labels(stage=stage).set(float(info["adaptive_cooldown"]))
 
         except FileNotFoundError:
             logger.error("kubectl binary not found in controller container; cannot scale %s", stage)
@@ -271,6 +384,10 @@ class ScalingController:
             alpha = self._ema_alpha
             info["ema_load"] = alpha * load + (1 - alpha) * info["ema_load"]
             ema = info["ema_load"]
+            SCALER_EMA_LOAD.labels(stage=stage).set(float(ema))
+            SCALER_CURRENT_REPLICAS.labels(stage=stage).set(float(info["current_replicas"]))
+            SCALER_TARGET_REPLICAS.labels(stage=stage).set(float(info["current_replicas"]))
+            SCALER_COOLDOWN_SECONDS.labels(stage=stage).set(float(info["adaptive_cooldown"]))
 
             # Cooldown check (uses adaptive cooldown if oscillating)
             if now - info["last_scale_time"] < info["adaptive_cooldown"]:
@@ -287,6 +404,8 @@ class ScalingController:
             else:
                 info["high_load_streak"] = 0
                 info["low_load_streak"] = 0
+            SCALER_HIGH_LOAD_STREAK.labels(stage=stage).set(float(info["high_load_streak"]))
+            SCALER_LOW_LOAD_STREAK.labels(stage=stage).set(float(info["low_load_streak"]))
 
             if info["high_load_streak"] >= info["scale_up_consecutive_required"]:
                 # Fast scale-up: +2 if far above threshold, +1 otherwise
@@ -328,6 +447,9 @@ class ScalingController:
 
     def run(self):
         """Main control loop."""
+        if self._prom_enabled:
+            start_http_server(self._prom_port)
+            logger.info("Controller Prometheus metrics server on :%d", self._prom_port)
         logger.info("Scaling controller started (interval=%ds cooldown=%ds)",
                      self._interval, self._cooldown)
         while True:

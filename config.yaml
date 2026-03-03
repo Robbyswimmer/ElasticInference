@@ -39,6 +39,8 @@ scaling:
   cooldown: 75
   ema_alpha: 0.18
   metrics_timeout_seconds: 8
+  prometheus_enabled: true
+  prometheus_port: 9100
   downscale_signal: instant
   service_time_baseline_ms: 300
   fast_scale_up: true

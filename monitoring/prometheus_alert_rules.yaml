@@ -1,0 +1,89 @@
+groups:
+  - name: llm-inference.rules
+    rules:
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum(rate(gateway_requests_total{status!="ok"}[5m]))
+            /
+            clamp_min(sum(rate(gateway_requests_total[5m])), 1e-9)
+          ) > 0.02
+        for: 5m
+        labels:
+          severity: warning
+          service: gateway
+        annotations:
+          summary: "Gateway error rate > 2% for 5m"
+          description: "gateway_requests_total non-ok ratio is above 2%."
+
+      - alert: E2ELatencyP95High
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(rate(gateway_e2e_latency_ms_bucket[5m])) by (le)
+          ) > 3000
+        for: 5m
+        labels:
+          severity: warning
+          service: gateway
+        annotations:
+          summary: "Gateway E2E p95 latency is high"
+          description: "gateway_e2e_latency_ms p95 exceeds 3000ms for 5m."
+
+      - alert: DecodeQueueBacklog
+        expr: avg_over_time(gateway_decode_queue_length[5m]) > 8
+        for: 5m
+        labels:
+          severity: warning
+          service: gateway
+        annotations:
+          summary: "Decode queue backlog sustained"
+          description: "gateway_decode_queue_length avg over 5m exceeds 8."
+
+      - alert: PrefillQueueBacklog
+        expr: avg_over_time(gateway_prefill_queue_length[5m]) > 4
+        for: 5m
+        labels:
+          severity: warning
+          service: gateway
+        annotations:
+          summary: "Prefill queue backlog sustained"
+          description: "gateway_prefill_queue_length avg over 5m exceeds 4."
+
+      - alert: NoTrafficButHighActive
+        expr: |
+          (
+            sum(rate(gateway_requests_total[5m])) < 0.05
+          )
+          and
+          (
+            avg_over_time(gateway_active_requests[5m]) > 3
+          )
+        for: 10m
+        labels:
+          severity: warning
+          service: gateway
+        annotations:
+          summary: "No traffic but active requests remain high"
+          description: "Possible stuck requests: low ingress traffic but active requests stay high."
+
+      - alert: ScalingOscillation
+        expr: |
+          (
+            increase(scaler_scale_events_total{direction="up"}[10m]) > 0
+          )
+          and
+          (
+            increase(scaler_scale_events_total{direction="down"}[10m]) > 0
+          )
+          and
+          (
+            increase(scaler_oscillation_events_total[10m]) >= 1
+          )
+        for: 2m
+        labels:
+          severity: warning
+          service: scaling-controller
+        annotations:
+          summary: "Scaling oscillation detected"
+          description: "Both scale-up and scale-down happened in 10m with oscillation events recorded."
