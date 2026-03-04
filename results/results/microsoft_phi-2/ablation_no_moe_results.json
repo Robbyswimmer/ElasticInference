@@ -1,0 +1,323 @@
+{
+  "summary": {
+    "num_requests": 30,
+    "total_tokens": 1950,
+    "throughput_rps": 0.5698356109451699,
+    "throughput_tps": 37.03931471143605,
+    "e2e_p50_ms": 876.0470275878906,
+    "e2e_p95_ms": 2428.185046386718,
+    "e2e_p99_ms": 2527.5180419921876,
+    "prefill_p50_ms": 21.720236778259277,
+    "prefill_p95_ms": 52.376088142395005,
+    "decode_p50_ms": 846.74951171875,
+    "decode_p95_ms": 2374.419421386718,
+    "ttft_p50_ms": 21.880833104252815,
+    "ttft_p95_ms": 52.649702985584725,
+    "ttft_p99_ms": 61.10171606302262,
+    "gpu_seconds_per_request": 1.125517032877604,
+    "gpu_seconds_total": 33.765510986328124,
+    "gpu_utilization_pct": 64.13596860590044
+  },
+  "records": [
+    {
+      "request_id": "f4fa1a31-45bf-45f3-b978-9d675cbfe8db",
+      "queue_wait_ms": 0.1597301959991455,
+      "prefill_ms": 20.48067283630371,
+      "decode_ms": 793.298583984375,
+      "total_ms": 814.7789306640625,
+      "tokens_generated": 65,
+      "ttft_ms": 20.640403032302856,
+      "timestamp": 1772585297.5231724
+    },
+    {
+      "request_id": "88763696-4866-45dd-ae8f-2c7769b93409",
+      "queue_wait_ms": 0.2073114812374115,
+      "prefill_ms": 54.63861083984375,
+      "decode_ms": 2445.420654296875,
+      "total_ms": 2501.449462890625,
+      "tokens_generated": 65,
+      "ttft_ms": 54.84592232108116,
+      "timestamp": 1772585299.9759457
+    },
+    {
+      "request_id": "9588591b-c805-4ae2-acb6-68ffa13539c0",
+      "queue_wait_ms": 0.22391602396965027,
+      "prefill_ms": 63.4329833984375,
+      "decode_ms": 2473.48291015625,
+      "total_ms": 2538.165771484375,
+      "tokens_generated": 65,
+      "ttft_ms": 63.65689942240715,
+      "timestamp": 1772585300.0323756
+    },
+    {
+      "request_id": "41742017-b2e0-4d47-8fd2-ce9908ecb9d9",
+      "queue_wait_ms": 0.3546522855758667,
+      "prefill_ms": 49.610782623291016,
+      "decode_ms": 2287.64013671875,
+      "total_ms": 2338.6396484375,
+      "tokens_generated": 65,
+      "ttft_ms": 49.96543490886688,
+      "timestamp": 1772585300.2111235
+    },
+    {
+      "request_id": "39396583-7af0-4d19-8607-86237b588cc1",
+      "queue_wait_ms": 0.1895250678062439,
+      "prefill_ms": 20.918519973754883,
+      "decode_ms": 1335.966796875,
+      "total_ms": 1357.9910888671875,
+      "tokens_generated": 65,
+      "ttft_ms": 21.108045041561127,
+      "timestamp": 1772585301.7257328
+    },
+    {
+      "request_id": "26331d29-d50f-4d89-9b57-0f4b4fa95deb",
+      "queue_wait_ms": 0.1527201384305954,
+      "prefill_ms": 21.32755470275879,
+      "decode_ms": 1973.57861328125,
+      "total_ms": 1995.953857421875,
+      "tokens_generated": 65,
+      "ttft_ms": 21.480274841189384,
+      "timestamp": 1772585302.8358285
+    },
+    {
+      "request_id": "3f72651b-caeb-4881-877d-8d9c3c534bca",
+      "queue_wait_ms": 0.15521329641342163,
+      "prefill_ms": 21.441574096679688,
+      "decode_ms": 1912.666015625,
+      "total_ms": 1935.0509033203125,
+      "tokens_generated": 65,
+      "ttft_ms": 21.59678739309311,
+      "timestamp": 1772585302.9190361
+    },
+    {
+      "request_id": "e03b3b7b-7607-49e5-b408-ae28ef8e4fd4",
+      "queue_wait_ms": 0.23425184190273285,
+      "prefill_ms": 23.94850730895996,
+      "decode_ms": 792.8563842773438,
+      "total_ms": 818.0741577148438,
+      "tokens_generated": 65,
+      "ttft_ms": 24.182759150862694,
+      "timestamp": 1772585305.1084406
+    },
+    {
+      "request_id": "8fd36eba-6a35-412e-9177-4bf7af97ba5a",
+      "queue_wait_ms": 0.2540508210659027,
+      "prefill_ms": 42.494686126708984,
+      "decode_ms": 789.4747924804688,
+      "total_ms": 833.340576171875,
+      "tokens_generated": 65,
+      "ttft_ms": 42.74873694777489,
+      "timestamp": 1772585307.0730913
+    },
+    {
+      "request_id": "94f5e8af-cb2a-491c-84cd-fedd3824f1a7",
+      "queue_wait_ms": 0.1590987741947174,
+      "prefill_ms": 18.899669647216797,
+      "decode_ms": 1049.647705078125,
+      "total_ms": 1069.648681640625,
+      "tokens_generated": 65,
+      "ttft_ms": 19.058768421411514,
+      "timestamp": 1772585308.6792982
+    },
+    {
+      "request_id": "300ca888-7a9e-4c58-af93-ed181a0b79bc",
+      "queue_wait_ms": 0.15236902236938477,
+      "prefill_ms": 21.74759292602539,
+      "decode_ms": 1034.8583984375,
+      "total_ms": 1057.638427734375,
+      "tokens_generated": 65,
+      "ttft_ms": 21.899961948394775,
+      "timestamp": 1772585309.0123992
+    },
+    {
+      "request_id": "7d9440ee-ae2d-4b33-9c91-8417a8eb010e",
+      "queue_wait_ms": 0.17490237951278687,
+      "prefill_ms": 18.631267547607422,
+      "decode_ms": 877.8060913085938,
+      "total_ms": 897.5453491210938,
+      "tokens_generated": 65,
+      "ttft_ms": 18.80616992712021,
+      "timestamp": 1772585310.9598124
+    },
+    {
+      "request_id": "53c57e2f-f3d7-45e2-a10f-edc14051f15a",
+      "queue_wait_ms": 0.21159741282463074,
+      "prefill_ms": 40.52513122558594,
+      "decode_ms": 851.9552001953125,
+      "total_ms": 893.6488037109375,
+      "tokens_generated": 65,
+      "ttft_ms": 40.73672863841057,
+      "timestamp": 1772585311.6026413
+    },
+    {
+      "request_id": "b4626160-8db1-4363-9785-754b19a607b0",
+      "queue_wait_ms": 0.2469206154346466,
+      "prefill_ms": 26.912824630737305,
+      "decode_ms": 791.5660400390625,
+      "total_ms": 819.73388671875,
+      "tokens_generated": 65,
+      "ttft_ms": 27.15974524617195,
+      "timestamp": 1772585313.4121695
+    },
+    {
+      "request_id": "3f7da945-56b4-47d1-820c-17e2920cb4ac",
+      "queue_wait_ms": 0.17461180686950684,
+      "prefill_ms": 19.379600524902344,
+      "decode_ms": 766.6556396484375,
+      "total_ms": 787.1906127929688,
+      "tokens_generated": 65,
+      "ttft_ms": 19.55421233177185,
+      "timestamp": 1772585315.5861018
+    },
+    {
+      "request_id": "d5408644-7cf8-4a3c-9003-4d8f6bfe7198",
+      "queue_wait_ms": 0.16654935479164124,
+      "prefill_ms": 17.682865142822266,
+      "decode_ms": 764.842041015625,
+      "total_ms": 783.63525390625,
+      "tokens_generated": 65,
+      "ttft_ms": 17.849414497613907,
+      "timestamp": 1772585317.6867406
+    },
+    {
+      "request_id": "e216859d-1d9f-4b52-bc66-8626b5ce573f",
+      "queue_wait_ms": 0.16370601952075958,
+      "prefill_ms": 18.51898956298828,
+      "decode_ms": 766.2049560546875,
+      "total_ms": 785.82861328125,
+      "tokens_generated": 65,
+      "ttft_ms": 18.68269558250904,
+      "timestamp": 1772585318.6096349
+    },
+    {
+      "request_id": "e30ea994-18b7-46a2-b080-2465e1845098",
+      "queue_wait_ms": 0.22763200104236603,
+      "prefill_ms": 24.050329208374023,
+      "decode_ms": 777.9991455078125,
+      "total_ms": 803.2600708007812,
+      "tokens_generated": 65,
+      "ttft_ms": 24.27796120941639,
+      "timestamp": 1772585319.6509411
+    },
+    {
+      "request_id": "10eb3b95-6495-45cb-9cf8-51afb14087db",
+      "queue_wait_ms": 0.25478190183639526,
+      "prefill_ms": 34.05665588378906,
+      "decode_ms": 790.0088500976562,
+      "total_ms": 825.3994750976562,
+      "tokens_generated": 65,
+      "ttft_ms": 34.31143778562546,
+      "timestamp": 1772585321.3361473
+    },
+    {
+      "request_id": "0ee9920c-cba6-4439-be74-02dd879b8cb0",
+      "queue_wait_ms": 0.16793236136436462,
+      "prefill_ms": 18.661983489990234,
+      "decode_ms": 885.4555053710938,
+      "total_ms": 905.1919555664062,
+      "tokens_generated": 65,
+      "ttft_ms": 18.8299158513546,
+      "timestamp": 1772585333.8513541
+    },
+    {
+      "request_id": "0d75d81a-bc4d-4a02-a1eb-6a42e76b7bff",
+      "queue_wait_ms": 0.15422236919403076,
+      "prefill_ms": 17.785858154296875,
+      "decode_ms": 841.5438232421875,
+      "total_ms": 860.3829345703125,
+      "tokens_generated": 65,
+      "ttft_ms": 17.940080523490906,
+      "timestamp": 1772585335.5883212
+    },
+    {
+      "request_id": "01cbfc8a-be76-4d4f-a5b9-72d42f53319f",
+      "queue_wait_ms": 0.16882362961769104,
+      "prefill_ms": 21.692880630493164,
+      "decode_ms": 943.4169921875,
+      "total_ms": 966.1907958984375,
+      "tokens_generated": 65,
+      "ttft_ms": 21.861704260110855,
+      "timestamp": 1772585336.3481808
+    },
+    {
+      "request_id": "e6e60890-a1b0-41bd-adfd-0cd6a78c30e4",
+      "queue_wait_ms": 0.2206210047006607,
+      "prefill_ms": 29.165504455566406,
+      "decode_ms": 861.3253784179688,
+      "total_ms": 891.7111206054688,
+      "tokens_generated": 65,
+      "ttft_ms": 29.386125460267067,
+      "timestamp": 1772585337.0160656
+    },
+    {
+      "request_id": "81544f9a-c570-45a1-91f5-74d5b0e83756",
+      "queue_wait_ms": 0.2522692084312439,
+      "prefill_ms": 30.839767456054688,
+      "decode_ms": 1148.84033203125,
+      "total_ms": 1181.020751953125,
+      "tokens_generated": 65,
+      "ttft_ms": 31.09203666448593,
+      "timestamp": 1772585338.431321
+    },
+    {
+      "request_id": "7b22d436-9004-4f5b-85de-a969cea72792",
+      "queue_wait_ms": 0.17940998077392578,
+      "prefill_ms": 23.401023864746094,
+      "decode_ms": 1112.19140625,
+      "total_ms": 1136.6807861328125,
+      "tokens_generated": 65,
+      "ttft_ms": 23.58043384552002,
+      "timestamp": 1772585338.917792
+    },
+    {
+      "request_id": "aa2264fd-d41e-4e82-9046-a1f4e907bd8a",
+      "queue_wait_ms": 0.1492844820022583,
+      "prefill_ms": 17.537857055664062,
+      "decode_ms": 766.7473754882812,
+      "total_ms": 785.347412109375,
+      "tokens_generated": 65,
+      "ttft_ms": 17.68714153766632,
+      "timestamp": 1772585340.866765
+    },
+    {
+      "request_id": "d2a09e30-dc61-474a-a1a0-5eff6fce55de",
+      "queue_wait_ms": 0.1628948450088501,
+      "prefill_ms": 19.53306007385254,
+      "decode_ms": 763.1068725585938,
+      "total_ms": 783.7543334960938,
+      "tokens_generated": 65,
+      "ttft_ms": 19.69595491886139,
+      "timestamp": 1772585342.5755749
+    },
+    {
+      "request_id": "030454e4-e51e-4f08-8c13-cd83eb1d86cf",
+      "queue_wait_ms": 0.21416135132312775,
+      "prefill_ms": 25.637020111083984,
+      "decode_ms": 780.9393310546875,
+      "total_ms": 807.7716674804688,
+      "tokens_generated": 65,
+      "ttft_ms": 25.851181462407112,
+      "timestamp": 1772585346.6840112
+    },
+    {
+      "request_id": "3e418a62-c4de-4a7d-8982-22651832b3df",
+      "queue_wait_ms": 0.2577565610408783,
+      "prefill_ms": 30.366167068481445,
+      "decode_ms": 774.0665893554688,
+      "total_ms": 805.6935424804688,
+      "tokens_generated": 65,
+      "ttft_ms": 30.623923629522324,
+      "timestamp": 1772585349.2840047
+    },
+    {
+      "request_id": "9b5aa611-1ad8-4d67-b912-c7d023d18180",
+      "queue_wait_ms": 0.17057545483112335,
+      "prefill_ms": 18.86864471435547,
+      "decode_ms": 764.8675537109375,
+      "total_ms": 784.7921142578125,
+      "tokens_generated": 65,
+      "ttft_ms": 19.039220169186592,
+      "timestamp": 1772585350.1699347
+    }
+  ]
+}

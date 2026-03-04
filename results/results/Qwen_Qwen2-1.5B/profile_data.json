@@ -1,0 +1,65 @@
+[
+  {
+    "gpu_pct": 100,
+    "concurrency": 1,
+    "num_measurements": 15,
+    "prefill": {
+      "avg_latency_ms": 16.667985916137695,
+      "p95_latency_ms": 17.584754180908202,
+      "p99_latency_ms": 17.98681625366211
+    },
+    "decode": {
+      "avg_latency_ms": 793.9345499674479,
+      "p95_latency_ms": 799.5294006347656,
+      "p99_latency_ms": 803.6514367675782
+    },
+    "e2e": {
+      "avg_latency_ms": 811.6195027669271,
+      "p95_latency_ms": 817.7921691894531,
+      "p99_latency_ms": 820.9730334472656
+    },
+    "avg_throughput_tps": 80.0884273576259
+  },
+  {
+    "gpu_pct": 50,
+    "concurrency": 2,
+    "num_measurements": 15,
+    "prefill": {
+      "avg_latency_ms": 28.35909563700358,
+      "p95_latency_ms": 37.078841018676755,
+      "p99_latency_ms": 37.23565956115723
+    },
+    "decode": {
+      "avg_latency_ms": 1728.196883138021,
+      "p95_latency_ms": 1844.575927734375,
+      "p99_latency_ms": 1845.014794921875
+    },
+    "e2e": {
+      "avg_latency_ms": 1757.791170247396,
+      "p95_latency_ms": 1871.8560302734375,
+      "p99_latency_ms": 1872.1610498046875
+    },
+    "avg_throughput_tps": 37.10902607273635
+  },
+  {
+    "gpu_pct": 25,
+    "concurrency": 4,
+    "num_measurements": 15,
+    "prefill": {
+      "avg_latency_ms": 55.227492014567055,
+      "p95_latency_ms": 59.099827957153316,
+      "p99_latency_ms": 60.176447525024415
+    },
+    "decode": {
+      "avg_latency_ms": 3612.046695963542,
+      "p95_latency_ms": 3702.20478515625,
+      "p99_latency_ms": 3709.12220703125
+    },
+    "e2e": {
+      "avg_latency_ms": 3668.9265299479166,
+      "p95_latency_ms": 3761.833642578125,
+      "p99_latency_ms": 3764.562822265625
+    },
+    "avg_throughput_tps": 17.72159110318726
+  }
+]

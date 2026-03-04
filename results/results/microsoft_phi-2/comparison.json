@@ -1,0 +1,77 @@
+{
+  "autotune_off": {
+    "num_requests": 30,
+    "total_tokens": 1950,
+    "throughput_rps": 0.7111460199106228,
+    "throughput_tps": 46.22449129419048,
+    "e2e_p50_ms": 1211.5392456054688,
+    "e2e_p95_ms": 5217.950439453125,
+    "e2e_p99_ms": 5276.62564453125,
+    "prefill_p50_ms": 25.225340843200684,
+    "prefill_p95_ms": 47.78979625701902,
+    "decode_p50_ms": 1187.46142578125,
+    "decode_p95_ms": 5180.400390625,
+    "ttft_p50_ms": 25.434549421072006,
+    "ttft_p95_ms": 48.026664277166105,
+    "ttft_p99_ms": 52.614030161947014,
+    "gpu_seconds_per_request": 1.9052373107910154,
+    "gpu_seconds_total": 57.15711932373046,
+    "gpu_utilization_pct": 100.0
+  },
+  "autotune_on": {
+    "num_requests": 30,
+    "total_tokens": 1950,
+    "throughput_rps": 0.4343973957516204,
+    "throughput_tps": 28.235830723855326,
+    "e2e_p50_ms": 838.1792602539062,
+    "e2e_p95_ms": 1550.5595642089843,
+    "e2e_p99_ms": 1731.680671386719,
+    "prefill_p50_ms": 23.616676330566406,
+    "prefill_p95_ms": 40.83443412780762,
+    "decode_p50_ms": 805.9917297363281,
+    "decode_p95_ms": 1521.3054382324217,
+    "ttft_p50_ms": 23.809941604733467,
+    "ttft_p95_ms": 41.07462855279446,
+    "ttft_p99_ms": 44.69003873750568,
+    "gpu_seconds_per_request": 0.9687334757486978,
+    "gpu_seconds_total": 29.062004272460936,
+    "gpu_utilization_pct": 42.08152990426498
+  },
+  "improvement": {
+    "e2e_p50_ms": {
+      "off": 1211.5392456054688,
+      "on": 838.1792602539062,
+      "change_pct": 30.82
+    },
+    "e2e_p95_ms": {
+      "off": 5217.950439453125,
+      "on": 1550.5595642089843,
+      "change_pct": 70.28
+    },
+    "e2e_p99_ms": {
+      "off": 5276.62564453125,
+      "on": 1731.680671386719,
+      "change_pct": 67.18
+    },
+    "throughput_tps": {
+      "off": 46.22449129419048,
+      "on": 28.235830723855326,
+      "change_pct": -38.92
+    },
+    "gpu_seconds_per_request": {
+      "off": 1.9052373107910154,
+      "on": 0.9687334757486978,
+      "change_pct": 49.15
+    }
+  },
+  "config": {
+    "off": {
+      "prefill_batch": 8,
+      "decode_batch": 32
+    },
+    "on": {
+      "prefill_batch_size": 4,
+      "decode_batch_size": 16
+    }
+  }
+}

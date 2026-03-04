@@ -1,0 +1,175 @@
+======================================================================
+CS208 Multi-Model Autotune Experiment — Summary
+======================================================================
+
+============================================================
+Model: facebook/opt-1.3b
+============================================================
+
+--- Phase A: GPU% Profiling ---
+  Concurrency 1 (GPU% = 100%):
+    E2E avg:     411.9 ms
+    E2E p95:     424.6 ms
+    Throughput:  157.9 tps
+  Concurrency 2 (GPU% = 50%):
+    E2E avg:     972.6 ms
+    E2E p95:     984.0 ms
+    Throughput:  66.8 tps
+  Concurrency 4 (GPU% = 25%):
+    E2E avg:     2033.2 ms
+    E2E p95:     2125.4 ms
+    Throughput:  32.1 tps
+
+--- Phase B: Knee Analysis ---
+  prefill: knee at GPU% = 50, avg_latency = 21.8 ms
+  decode: knee at GPU% = 50, avg_latency = 949.7 ms
+  Optimal batches: prefill=4, decode=16
+
+--- Phase C: Autotune OFF vs ON ---
+  Autotune OFF:
+    p95 latency: 439.8 ms
+    Throughput:  33.5 tps
+    GPU-s/req:   0.416
+  Autotune ON:
+    p95 latency: 828.2 ms
+    Throughput:  39.6 tps
+    GPU-s/req:   0.529
+  p95 latency: 88.3% regression
+  throughput: 18.2% improvement
+
+--- Phase D: Ablation ---
+  Config                  p95(ms)        TPS    GPU-s/req
+  full_system               971.8       37.3        0.524
+  no_autotune               677.7       25.9        0.449
+  no_moe                    650.3       34.7        0.444
+  static_baseline          1009.5       45.3        0.494
+
+============================================================
+Model: Qwen/Qwen2-1.5B
+============================================================
+
+--- Phase A: GPU% Profiling ---
+  Concurrency 1 (GPU% = 100%):
+    E2E avg:     811.6 ms
+    E2E p95:     817.8 ms
+    Throughput:  80.1 tps
+  Concurrency 2 (GPU% = 50%):
+    E2E avg:     1757.8 ms
+    E2E p95:     1871.9 ms
+    Throughput:  37.1 tps
+  Concurrency 4 (GPU% = 25%):
+    E2E avg:     3668.9 ms
+    E2E p95:     3761.8 ms
+    Throughput:  17.7 tps
+
+--- Phase B: Knee Analysis ---
+  prefill: knee at GPU% = 50, avg_latency = 28.4 ms
+  decode: knee at GPU% = 50, avg_latency = 1728.2 ms
+  Optimal batches: prefill=4, decode=16
+
+--- Phase C: Autotune OFF vs ON ---
+  Autotune OFF:
+    p95 latency: 1976.9 ms
+    Throughput:  37.5 tps
+    GPU-s/req:   1.264
+  Autotune ON:
+    p95 latency: 1963.2 ms
+    Throughput:  37.4 tps
+    GPU-s/req:   1.276
+  p95 latency: 0.7% improvement
+  throughput: 0.2% regression
+
+--- Phase D: Ablation ---
+  Config                  p95(ms)        TPS    GPU-s/req
+  full_system              3982.4       50.5        1.465
+  no_autotune              4671.2       38.6        1.734
+  no_moe                   1231.3       35.1        0.926
+  static_baseline          2163.1       31.9        1.175
+
+============================================================
+Model: microsoft/phi-2
+============================================================
+
+--- Phase A: GPU% Profiling ---
+  Concurrency 1 (GPU% = 100%):
+    E2E avg:     807.8 ms
+    E2E p95:     853.8 ms
+    Throughput:  80.5 tps
+  Concurrency 2 (GPU% = 50%):
+    E2E avg:     1769.9 ms
+    E2E p95:     1962.3 ms
+    Throughput:  37.1 tps
+  Concurrency 4 (GPU% = 25%):
+    E2E avg:     4095.1 ms
+    E2E p95:     4235.7 ms
+    Throughput:  15.9 tps
+
+--- Phase B: Knee Analysis ---
+  prefill: knee at GPU% = 50, avg_latency = 40.3 ms
+  decode: knee at GPU% = 50, avg_latency = 1728.3 ms
+  Optimal batches: prefill=4, decode=16
+
+--- Phase C: Autotune OFF vs ON ---
+  Autotune OFF:
+    p95 latency: 5218.0 ms
+    Throughput:  46.2 tps
+    GPU-s/req:   1.905
+  Autotune ON:
+    p95 latency: 1550.6 ms
+    Throughput:  28.2 tps
+    GPU-s/req:   0.969
+  p95 latency: 70.3% improvement
+  throughput: 38.9% regression
+
+--- Phase D: Ablation ---
+  Config                  p95(ms)        TPS    GPU-s/req
+  full_system              1898.3       28.6        1.143
+  no_autotune              1346.8       32.5        0.976
+  no_moe                   2428.2       37.0        1.126
+  static_baseline          2320.0       32.6        1.046
+
+============================================================
+Model: facebook/opt-6.7b
+============================================================
+
+--- Phase A: GPU% Profiling ---
+  Concurrency 1 (GPU% = 100%):
+    E2E avg:     995.6 ms
+    E2E p95:     1200.7 ms
+    Throughput:  56.0 tps
+  Concurrency 2 (GPU% = 50%):
+    E2E avg:     1667.0 ms
+    E2E p95:     2294.1 ms
+    Throughput:  31.9 tps
+  Concurrency 4 (GPU% = 25%):
+    E2E avg:     3038.8 ms
+    E2E p95:     3724.9 ms
+    Throughput:  16.9 tps
+
+--- Phase B: Knee Analysis ---
+  prefill: knee at GPU% = 50, avg_latency = 55.8 ms
+  decode: knee at GPU% = 50, avg_latency = 1610.0 ms
+  Optimal batches: prefill=4, decode=16
+
+--- Phase C: Autotune OFF vs ON ---
+  Autotune OFF:
+    p95 latency: 3011.3 ms
+    Throughput:  27.3 tps
+    GPU-s/req:   1.809
+  Autotune ON:
+    p95 latency: 3980.1 ms
+    Throughput:  30.2 tps
+    GPU-s/req:   1.898
+  p95 latency: 32.2% regression
+  throughput: 10.5% improvement
+
+--- Phase D: Ablation ---
+  Config                  p95(ms)        TPS    GPU-s/req
+  full_system              3583.1       39.7        1.773
+  no_autotune              2653.6       23.1        1.497
+  no_moe                   3042.3       24.4        1.376
+  static_baseline          2384.1       26.2        1.439
+
+======================================================================
+Models tested: 4
+======================================================================

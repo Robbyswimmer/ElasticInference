@@ -1,0 +1,24 @@
+{
+  "prefill": {
+    "gpu_pct": 50,
+    "stage": "prefill",
+    "avg_latency_ms": 21.797097142537435,
+    "p95_latency_ms": 30.26390571594238,
+    "p99_latency_ms": 32.7497110748291,
+    "avg_throughput_tps": 66.83626114549853,
+    "best_batch_size": 8
+  },
+  "decode": {
+    "gpu_pct": 50,
+    "stage": "decode",
+    "avg_latency_ms": 949.6861490885417,
+    "p95_latency_ms": 955.8876525878907,
+    "p99_latency_ms": 956.4677160644532,
+    "avg_throughput_tps": 66.83626114549853,
+    "best_batch_size": 32
+  },
+  "optimal_batches": {
+    "prefill_batch_size": 4,
+    "decode_batch_size": 16
+  }
+}
