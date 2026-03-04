@@ -65,8 +65,8 @@ CONCURRENCY_GPU_MAP = {1: 100, 2: 50, 4: 25}
 NUM_WARMUP = 3
 NUM_MEASURE = 15
 NUM_EVAL_REQUESTS = 30
-ARRIVAL_RATE = 1.0
-MAX_TOKENS = 128
+ARRIVAL_RATE = 0.5  # Lower rate to avoid queueing on slow models
+MAX_TOKENS = 64     # Reduced to keep per-request time reasonable across all models
 
 # Default batch sizes (from config.yaml)
 DEFAULT_PREFILL_BATCH = 8
@@ -334,6 +334,9 @@ def generate_config(model_name, prefill_batch=None, decode_batch=None,
     config["prefill"]["connect_host"] = "localhost"
     config["decode"]["connect_host"] = "localhost"
     config["redis"]["host"] = "localhost"
+
+    # Increase gateway timeout for slower models (120s instead of 30s)
+    config["gateway"]["request_timeout_ms"] = 120000
 
     # Disable prometheus to avoid port conflicts between restarts
     config["prometheus"] = {"enabled": False}
