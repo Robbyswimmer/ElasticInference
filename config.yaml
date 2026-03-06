@@ -9,20 +9,27 @@ gateway:
   port: 50051
   max_queue_size: 256
   request_timeout_ms: 30000
+  load_balancer:
+    refresh_interval_s: 5
+    metrics_timeout_s: 1
 
 prefill:
   host: 0.0.0.0
   connect_host: prefill  # K8s override: "prefill" (service name)
+  lb_host: prefill-headless  # K8s headless service for pod-aware LB
   port: 50052
   batch_size: 8
   max_concurrent: 4
+  capacity_tokens_per_sec: 512
 
 decode:
   host: 0.0.0.0
   connect_host: decode  # K8s override: "decode" (service name)
+  lb_host: decode-headless  # K8s headless service for pod-aware LB
   port: 50053
   max_batch_size: 32
   max_new_tokens: 512
+  capacity_tokens_per_sec: 256
   # MoE simulation: top-k of N experts activated per decode step
   moe_num_experts: 8
   moe_top_k: 2
@@ -39,6 +46,9 @@ scaling:
   cooldown: 75
   ema_alpha: 0.18
   metrics_timeout_seconds: 8
+  use_piggyback_metrics: false
+  piggyback_fallback_to_rpc: true
+  piggyback_ttl_seconds: 30
   prometheus_enabled: true
   prometheus_port: 9100
   downscale_signal: instant

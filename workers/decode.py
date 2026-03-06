@@ -1,5 +1,7 @@
+import os
 import time
 import logging
+import threading
 from concurrent import futures
 
 import grpc
@@ -43,6 +45,10 @@ class DecodeServicer(inference_pb2_grpc.DecodeServiceServicer):
         self._metrics = MetricsTracker()
         self._max_tokens_default = config["decode"].get("max_new_tokens", 512)
         self._max_batch_size = config["decode"].get("max_batch_size", 32)
+        self._capacity_decode = float(config["decode"].get("capacity_tokens_per_sec", 256.0))
+        self._pod_name = os.environ.get("HOSTNAME", "unknown-decode")
+        self._remaining_tokens = {}
+        self._remaining_lock = threading.Lock()
 
         # MoE simulation: fraction of experts activated per token (0.0-1.0)
         # Higher = more compute per decode step (simulates top-k expert routing)
@@ -51,8 +57,8 @@ class DecodeServicer(inference_pb2_grpc.DecodeServiceServicer):
         self._moe_top_k = config["decode"].get("moe_top_k", 2)
 
         # Autotune: detect GPU% from env
-        import os
         self._gpu_pct = int(os.environ.get("CUDA_MPS_ACTIVE_THREAD_PERCENTAGE", 100))
+        self._metrics_rpc_delay_ms = float(os.environ.get("METRICS_RPC_DELAY_MS", "0"))
         logger.info("Decode worker GPU%%: %d, MoE experts=%d top_k=%d",
                      self._gpu_pct, self._moe_num_experts, self._moe_top_k)
 
@@ -111,6 +117,8 @@ class DecodeServicer(inference_pb2_grpc.DecodeServiceServicer):
                 past_key_values = legacy_past
 
             max_tokens = request.max_tokens if request.max_tokens > 0 else self._max_tokens_default
+            with self._remaining_lock:
+                self._remaining_tokens[request.request_id] = int(max_tokens)
             current_token_id = request.first_token_id
             generated_ids = [current_token_id]
 
@@ -133,9 +141,27 @@ class DecodeServicer(inference_pb2_grpc.DecodeServiceServicer):
                     next_token_id = torch.argmax(last_logits).item()
 
                 tokens_generated = step + 1
+                with self._remaining_lock:
+                    self._remaining_tokens[request.request_id] = max(0, int(max_tokens - tokens_generated))
                 is_finished = (next_token_id == self._eos_token_id) or (tokens_generated >= max_tokens)
                 token_text = self._tokenizer.decode([next_token_id], skip_special_tokens=False)
                 step_ms = (time.perf_counter() - t_step) * 1000
+                if is_finished:
+                    active, arrival_rate, avg_time = self._metrics.peek()
+                    with self._remaining_lock:
+                        queued_tokens = int(sum(self._remaining_tokens.values()))
+                        queue_length = len(self._remaining_tokens)
+                    worker_metrics = inference_pb2.WorkerMetrics(
+                        queue_length=queue_length,
+                        arrival_rate=arrival_rate,
+                        avg_service_time_ms=avg_time,
+                        active_requests=active,
+                        queued_tokens=queued_tokens,
+                        capacity_tokens_per_sec=self._capacity_decode,
+                        pod_name=self._pod_name,
+                    )
+                else:
+                    worker_metrics = inference_pb2.WorkerMetrics()
 
                 yield inference_pb2.DecodeResponse(
                     request_id=request.request_id,
@@ -144,6 +170,7 @@ class DecodeServicer(inference_pb2_grpc.DecodeServiceServicer):
                     is_finished=is_finished,
                     tokens_generated=tokens_generated,
                     decode_time_ms=step_ms,
+                    worker_metrics=worker_metrics,
                 )
 
                 if is_finished:
@@ -166,6 +193,8 @@ class DecodeServicer(inference_pb2_grpc.DecodeServiceServicer):
         finally:
             elapsed_ms = (time.perf_counter() - t_start) * 1000
             self._metrics.end_request(elapsed_ms)
+            with self._remaining_lock:
+                self._remaining_tokens.pop(request.request_id, None)
             self._kv_store.delete(request.request_id)
             if not finalized:
                 logger.info(
@@ -174,12 +203,20 @@ class DecodeServicer(inference_pb2_grpc.DecodeServiceServicer):
                 )
 
     def GetMetrics(self, request, context):
+        if self._metrics_rpc_delay_ms > 0:
+            time.sleep(self._metrics_rpc_delay_ms / 1000.0)
         active, arrival_rate, avg_time = self._metrics.snapshot()
+        with self._remaining_lock:
+            queued_tokens = int(sum(self._remaining_tokens.values()))
+            queue_length = len(self._remaining_tokens)
         return inference_pb2.WorkerMetrics(
-            queue_length=0,
+            queue_length=queue_length,
             arrival_rate=arrival_rate,
             avg_service_time_ms=avg_time,
             active_requests=active,
+            queued_tokens=queued_tokens,
+            capacity_tokens_per_sec=self._capacity_decode,
+            pod_name=self._pod_name,
         )
 
 

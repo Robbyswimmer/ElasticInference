@@ -51,10 +51,12 @@ kubectl -n $NAMESPACE rollout status deployment/redis --timeout=60s
 echo "=== Deploying Prefill workers ==="
 kubectl apply -f "$PROJECT_DIR/k8s/prefill-deployment.yaml"
 kubectl apply -f "$PROJECT_DIR/k8s/prefill-service.yaml"
+kubectl apply -f "$PROJECT_DIR/k8s/prefill-headless-service.yaml"
 
 echo "=== Deploying Decode workers ==="
 kubectl apply -f "$PROJECT_DIR/k8s/decode-deployment.yaml"
 kubectl apply -f "$PROJECT_DIR/k8s/decode-service.yaml"
+kubectl apply -f "$PROJECT_DIR/k8s/decode-headless-service.yaml"
 
 echo "=== Deploying Gateway ==="
 kubectl apply -f "$PROJECT_DIR/k8s/gateway-deployment.yaml"

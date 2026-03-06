@@ -77,6 +77,19 @@ class TestMetricsTracker:
         _, rate2, _ = m.snapshot()
         assert rate2 == 0.0
 
+    def test_peek_does_not_reset_window(self):
+        m = _MetricsTracker()
+        m.start_request()
+        m.end_request(10.0)
+        _, rate1, avg1 = m.peek()
+        _, rate2, avg2 = m.peek()
+        assert rate1 >= 0.0
+        assert avg1 == avg2
+        # Snapshot should still include the request because peek did not reset.
+        _, rate3, avg3 = m.snapshot()
+        assert avg3 == avg1
+        assert rate3 >= 0.0
+
     def test_thread_safety(self):
         m = _MetricsTracker()
         errors = []

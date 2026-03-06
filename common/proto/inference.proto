@@ -23,6 +23,9 @@ message WorkerMetrics {
   float arrival_rate = 2;
   float avg_service_time_ms = 3;
   int32 active_requests = 4;
+  int64 queued_tokens = 5;
+  float capacity_tokens_per_sec = 6;
+  string pod_name = 7;
 }
 
 message MetricsRequest {}
@@ -70,6 +73,7 @@ message PrefillResponse {
   string kv_cache_key = 2;
   int32 first_token_id = 3;
   float prefill_time_ms = 4;
+  WorkerMetrics worker_metrics = 5;
 }
 
 service PrefillService {
@@ -94,6 +98,7 @@ message DecodeResponse {
   bool is_finished = 4;
   int32 tokens_generated = 5;
   float decode_time_ms = 6;
+  WorkerMetrics worker_metrics = 7;
 }
 
 service DecodeService {

@@ -19,6 +19,14 @@ def _cast_int_env(value):
         raise
 
 
+def _cast_bool_env(value):
+    value = str(value).strip().lower()
+    return value in {"1", "true", "yes", "on"}
+
+def _cast_float_env(value):
+    return float(value)
+
+
 def load_config(path=None):
     """Load configuration from YAML with environment variable overrides.
 
@@ -44,6 +52,10 @@ def load_config(path=None):
         "PREFILL_PORT": ("prefill", "port", _cast_int_env),
         "DECODE_HOST":  ("decode", "connect_host"),
         "DECODE_PORT":  ("decode", "port", _cast_int_env),
+        "USE_PIGGYBACK_METRICS": ("scaling", "use_piggyback_metrics", _cast_bool_env),
+        "PIGGYBACK_FALLBACK_TO_RPC": ("scaling", "piggyback_fallback_to_rpc", _cast_bool_env),
+        "PIGGYBACK_TTL_SECONDS": ("scaling", "piggyback_ttl_seconds", _cast_int_env),
+        "SCALING_METRICS_INTERVAL": ("scaling", "metrics_interval", _cast_float_env),
     }
 
     for env_var, spec in _env_overrides.items():

@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     chmod +x /usr/local/bin/kubectl
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir grpcio pyyaml prometheus-client
+RUN pip install --no-cache-dir grpcio pyyaml prometheus-client redis
 
 COPY common/ common/
 COPY scaling/ scaling/

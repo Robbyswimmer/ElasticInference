@@ -1,0 +1,3 @@
+mode,ok,err,duration_s,rpc_decode,rpc_prefill,max_decode_replicas,avg_piggyback_age_s,decode_p95_ms,e2e_p95_ms,scaleup_reaction_s
+polling,240,0,59.9,24,24,1,-1,242.5,242.5,-1
+piggyback,240,0,59.9,5.217391304347826,5.217391304347826,1,3.1798572738965354,242.5,242.5,-1

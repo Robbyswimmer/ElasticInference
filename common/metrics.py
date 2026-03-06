@@ -29,16 +29,25 @@ class MetricsTracker:
             self._window_total += 1
             self._window_time_ms += duration_ms
 
-    def snapshot(self):
-        """Return (active_requests, arrival_rate, avg_service_time_ms)."""
+    def snapshot(self, reset=True):
+        """Return (active_requests, arrival_rate, avg_service_time_ms).
+
+        Args:
+            reset: when True, reset the rolling window after reading.
+        """
         with self._lock:
             now = time.monotonic()
             elapsed = now - self._window_start
             arrival_rate = self._window_count / elapsed if elapsed > 0 else 0.0
             avg_time = self._window_time_ms / self._window_total if self._window_total > 0 else 0.0
-            # Reset window
-            self._window_start = now
-            self._window_count = 0
-            self._window_total = 0
-            self._window_time_ms = 0.0
+            if reset:
+                # Reset window
+                self._window_start = now
+                self._window_count = 0
+                self._window_total = 0
+                self._window_time_ms = 0.0
             return self._active, arrival_rate, avg_time
+
+    def peek(self):
+        """Read metrics without resetting the rolling window."""
+        return self.snapshot(reset=False)

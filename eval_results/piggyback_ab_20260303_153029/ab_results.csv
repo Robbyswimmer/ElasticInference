@@ -1,0 +1,1 @@
+mode,ok,err,duration_s,rpc_decode,rpc_prefill,max_decode_replicas,avg_piggyback_age_s

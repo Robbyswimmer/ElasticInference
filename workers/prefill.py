@@ -1,3 +1,4 @@
+import os
 import time
 import logging
 import threading
@@ -39,10 +40,14 @@ class PrefillServicer(inference_pb2_grpc.PrefillServiceServicer):
         self._metrics = MetricsTracker()
         self._max_concurrent = config["prefill"].get("max_concurrent", 4)
         self._semaphore = threading.Semaphore(self._max_concurrent)
+        self._capacity_prefill = float(config["prefill"].get("capacity_tokens_per_sec", 512.0))
+        self._pod_name = os.environ.get("HOSTNAME", "unknown-prefill")
+        self._active_prompt_tokens = {}
+        self._active_prompt_lock = threading.Lock()
 
         # Autotune: detect GPU% from env (set by MPS or scaling controller)
-        import os
         self._gpu_pct = int(os.environ.get("CUDA_MPS_ACTIVE_THREAD_PERCENTAGE", 100))
+        self._metrics_rpc_delay_ms = float(os.environ.get("METRICS_RPC_DELAY_MS", "0"))
         logger.info("Prefill worker GPU%%: %d", self._gpu_pct)
 
     def update_config(self, max_concurrent=None):
@@ -66,6 +71,9 @@ class PrefillServicer(inference_pb2_grpc.PrefillServiceServicer):
 
         self._metrics.start_request()
         t_start = time.perf_counter()
+        token_count = len(request.token_ids)
+        with self._active_prompt_lock:
+            self._active_prompt_tokens[request.request_id] = token_count
 
         try:
             token_ids = list(request.token_ids)
@@ -90,6 +98,7 @@ class PrefillServicer(inference_pb2_grpc.PrefillServiceServicer):
 
             elapsed_ms = (time.perf_counter() - t_start) * 1000
             self._metrics.end_request(elapsed_ms)
+            active, arrival_rate, avg_time = self._metrics.peek()
 
             logger.info(
                 "Prefill %s — %d tokens, first_token=%d, %.1fms",
@@ -100,6 +109,15 @@ class PrefillServicer(inference_pb2_grpc.PrefillServiceServicer):
                 kv_cache_key=kv_cache_key,
                 first_token_id=first_token_id,
                 prefill_time_ms=elapsed_ms,
+                worker_metrics=inference_pb2.WorkerMetrics(
+                    queue_length=0,
+                    arrival_rate=arrival_rate,
+                    avg_service_time_ms=avg_time,
+                    active_requests=active,
+                    queued_tokens=int(token_count),
+                    capacity_tokens_per_sec=self._capacity_prefill,
+                    pod_name=self._pod_name,
+                ),
             )
         except Exception as e:
             elapsed_ms = (time.perf_counter() - t_start) * 1000
@@ -109,15 +127,25 @@ class PrefillServicer(inference_pb2_grpc.PrefillServiceServicer):
             context.set_details(str(e))
             return inference_pb2.PrefillResponse()
         finally:
+            with self._active_prompt_lock:
+                self._active_prompt_tokens.pop(request.request_id, None)
             self._semaphore.release()
 
     def GetMetrics(self, request, context):
+        if self._metrics_rpc_delay_ms > 0:
+            time.sleep(self._metrics_rpc_delay_ms / 1000.0)
         active, arrival_rate, avg_time = self._metrics.snapshot()
+        with self._active_prompt_lock:
+            queued_tokens = int(sum(self._active_prompt_tokens.values()))
+            queue_length = len(self._active_prompt_tokens)
         return inference_pb2.WorkerMetrics(
-            queue_length=0,
+            queue_length=queue_length,
             arrival_rate=arrival_rate,
             avg_service_time_ms=avg_time,
             active_requests=active,
+            queued_tokens=queued_tokens,
+            capacity_tokens_per_sec=self._capacity_prefill,
+            pod_name=self._pod_name,
         )
 
 
