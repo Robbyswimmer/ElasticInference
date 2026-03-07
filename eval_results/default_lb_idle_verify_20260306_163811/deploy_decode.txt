@@ -1,0 +1,2 @@
+NAME     READY   UP-TO-DATE   AVAILABLE   AGE     CONTAINERS   IMAGES                                                        SELECTOR
+decode   4/5     5            4           7d14h   decode       docker.io/lxzhong/llm-inference:lbcmp-20260305011828-worker   app=decode

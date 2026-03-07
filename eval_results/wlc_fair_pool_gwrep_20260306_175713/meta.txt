@@ -1,0 +1,5 @@
+client_pod=prefill-7b944dc8c9-b64xt
+mode=default_wlc_poolgw start=2026-03-07T00:58:45Z
+mode=default_wlc_poolgw end=2026-03-07T01:00:27Z
+mode=custom_lb_poolgw start=2026-03-07T01:01:39Z
+mode=custom_lb_poolgw end=2026-03-07T01:02:46Z

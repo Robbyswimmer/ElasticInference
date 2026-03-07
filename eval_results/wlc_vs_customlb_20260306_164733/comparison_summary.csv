@@ -1,0 +1,3 @@
+mode,pods_running,pods_with_traffic,total,max_single_pod_share_pct
+custom_lb,4,3,200,50.0
+default_wlc,4,1,200,100.0

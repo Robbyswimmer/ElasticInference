@@ -1,0 +1,8 @@
+total_decode_logs=200
+pods_running=4
+pods_with_traffic=1
+max_single_pod_share=100.00%
+decode-d95fd4f5b-8cmzp=0
+decode-d95fd4f5b-k6s48=0
+decode-d95fd4f5b-lgkw2=0
+decode-d95fd4f5b-shm4n=200

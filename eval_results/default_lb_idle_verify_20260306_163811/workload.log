@@ -1,0 +1,2 @@
+=== run workload ===
+RESULT N=200 ok=200 err=0 avg_s=4.044 duration_s=84.0

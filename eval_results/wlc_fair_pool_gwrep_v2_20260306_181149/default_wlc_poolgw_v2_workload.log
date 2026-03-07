@@ -1,0 +1,1 @@
+RESULT mode=fairwlc2 N=200 ok=200 err=0 gw_ips=3 stubs=6 avg_s=0.463 avg_total_ms=461.4 avg_decode_ms=429.3 duration_s=66.8

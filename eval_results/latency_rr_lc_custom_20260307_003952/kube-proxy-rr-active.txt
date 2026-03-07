@@ -1,0 +1,2 @@
+36:  scheduler: rr
+50:mode: ipvs

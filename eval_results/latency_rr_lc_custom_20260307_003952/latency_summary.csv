@@ -1,0 +1,4 @@
+mode,label,ok,mean_total_ms,p95_total_ms
+rr_default,K8s IPVS RR,220,465.19,530.21
+lc_default,K8s IPVS LC,220,454.3,487.53
+custom_lb,Project Custom LB,220,1178.81,1219.73

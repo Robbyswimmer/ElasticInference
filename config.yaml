@@ -9,9 +9,12 @@ gateway:
   port: 50051
   max_queue_size: 256
   request_timeout_ms: 30000
+  service_channel_pool_size: 1
   load_balancer:
     refresh_interval_s: 5
     metrics_timeout_s: 1
+    metrics_poll_interval_s: 0.2
+    metrics_stale_after_s: 1.0
 
 prefill:
   host: 0.0.0.0

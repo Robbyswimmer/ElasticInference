@@ -1,0 +1,4 @@
+label,ok,mean_total_ms,p95_total_ms
+K8s IPVS RR,220,465.19,530.21
+K8s IPVS LC,220,454.3,487.53
+Project Custom LB (Cached Pick),220,436.02,498.54

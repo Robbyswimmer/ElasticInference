@@ -1,0 +1,5 @@
+mode,pod,decode_request_log_count
+custom_lb,decode-d95fd4f5b-8cmzp,100
+custom_lb,decode-d95fd4f5b-k6s48,50
+custom_lb,decode-d95fd4f5b-lgkw2,50
+custom_lb,decode-d95fd4f5b-shm4n,0

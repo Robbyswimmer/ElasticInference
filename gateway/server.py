@@ -40,15 +40,30 @@ _CHANNEL_OPTIONS = [
 class StagePodRouter:
     """Resolve per-pod endpoints from headless DNS and choose the best pod."""
 
-    def __init__(self, stage, host, port, metrics_timeout_s=1.0, refresh_interval_s=5):
+    def __init__(
+        self,
+        stage,
+        host,
+        port,
+        metrics_timeout_s=1.0,
+        refresh_interval_s=5,
+        metrics_poll_interval_s=0.2,
+        metrics_stale_after_s=1.0,
+    ):
         self._stage = stage
         self._host = host
         self._port = int(port)
         self._metrics_timeout_s = float(metrics_timeout_s)
         self._refresh_interval_s = float(refresh_interval_s)
+        self._metrics_poll_interval_s = float(metrics_poll_interval_s)
+        self._metrics_stale_after_s = float(metrics_stale_after_s)
         self._lock = threading.Lock()
         self._last_refresh = 0.0
-        self._targets = {}  # ip -> {"channel": ch, "stub": stub}
+        self._targets = {}  # ip -> {"channel": ch, "stub": stub, "metrics": WorkerMetrics|None, "last_metrics_ts": float}
+        self._pick_rr = 0
+        self._poll_stop = threading.Event()
+        self._poll_thread = threading.Thread(target=self._poll_loop, daemon=True)
+        self._poll_thread.start()
 
     def _resolve_ips(self):
         infos = socket.getaddrinfo(self._host, self._port, family=socket.AF_INET, type=socket.SOCK_STREAM)
@@ -80,7 +95,7 @@ class StagePodRouter:
             new_ips = set(ips)
             for ip in (new_ips - old_ips):
                 ch, stub = self._make_stub(ip)
-                self._targets[ip] = {"channel": ch, "stub": stub}
+                self._targets[ip] = {"channel": ch, "stub": stub, "metrics": None, "last_metrics_ts": 0.0}
             for ip in (old_ips - new_ips):
                 entry = self._targets.pop(ip, None)
                 if entry:
@@ -90,12 +105,36 @@ class StagePodRouter:
                         pass
             self._last_refresh = now
 
+    def _poll_loop(self):
+        while not self._poll_stop.is_set():
+            t0 = time.monotonic()
+            self._refresh()
+            with self._lock:
+                items = [(ip, entry["stub"]) for ip, entry in self._targets.items()]
+            now_ts = time.time()
+            for ip, stub in items:
+                try:
+                    m = stub.GetMetrics(
+                        inference_pb2.MetricsRequest(),
+                        timeout=self._metrics_timeout_s,
+                        wait_for_ready=True,
+                    )
+                except grpc.RpcError:
+                    continue
+                with self._lock:
+                    entry = self._targets.get(ip)
+                    if entry is not None:
+                        entry["metrics"] = m
+                        entry["last_metrics_ts"] = now_ts
+            dt = max(0.0, time.monotonic() - t0)
+            sleep_s = max(0.0, self._metrics_poll_interval_s - dt)
+            self._poll_stop.wait(sleep_s)
+
     def pick(self, new_request_tokens):
         """Pick the pod with min estimated response time.
 
         R = (queued_tokens + new_request_tokens) / capacity_tokens_per_sec
         """
-        self._refresh()
         with self._lock:
             items = list(self._targets.items())
         if not items:
@@ -105,15 +144,13 @@ class StagePodRouter:
         best_ip = None
         best_r = None
         new_tokens = max(0, int(new_request_tokens))
+        now_ts = time.time()
         for ip, entry in items:
-            stub = entry["stub"]
-            try:
-                m = stub.GetMetrics(
-                    inference_pb2.MetricsRequest(),
-                    timeout=self._metrics_timeout_s,
-                    wait_for_ready=True,
-                )
-            except grpc.RpcError:
+            m = entry.get("metrics")
+            last_ts = float(entry.get("last_metrics_ts", 0.0))
+            if m is None:
+                continue
+            if now_ts - last_ts > self._metrics_stale_after_s:
                 continue
             cap = max(float(m.capacity_tokens_per_sec), 1e-6)
             queued_tokens = max(0, int(m.queued_tokens))
@@ -121,9 +158,20 @@ class StagePodRouter:
             if best_r is None or r < best_r:
                 best_r = r
                 best_ip = ip
-                best_stub = stub
+                best_stub = entry["stub"]
 
-        return best_stub, best_ip, best_r
+        if best_stub is not None:
+            return best_stub, best_ip, best_r
+
+        # Cold start / stale cache fallback: pick from existing stubs without extra RPC.
+        with self._lock:
+            fallback_items = [(ip, entry["stub"]) for ip, entry in self._targets.items()]
+        if not fallback_items:
+            return None, None, None
+        idx = self._pick_rr % len(fallback_items)
+        self._pick_rr += 1
+        ip, stub = fallback_items[idx]
+        return stub, ip, None
 
 
 def _wait_for_channel(channel, target, timeout=30):
@@ -137,6 +185,34 @@ def _wait_for_channel(channel, target, timeout=30):
 
 
 class GatewayServicer(inference_pb2_grpc.GatewayServiceServicer):
+
+    @staticmethod
+    def _make_stage_stub(stage, channel):
+        if stage == "prefill":
+            return inference_pb2_grpc.PrefillServiceStub(channel)
+        return inference_pb2_grpc.DecodeServiceStub(channel)
+
+    def _build_service_pool(self, stage, target, pool_size):
+        entries = []
+        for i in range(pool_size):
+            channel = grpc.insecure_channel(target, options=_CHANNEL_OPTIONS)
+            # Keep startup behavior deterministic while avoiding long waits for extra pool members.
+            if i == 0:
+                _wait_for_channel(channel, target, timeout=30)
+            entries.append({
+                "channel": channel,
+                "stub": self._make_stage_stub(stage, channel),
+            })
+        return entries
+
+    def _pick_service_stub(self, stage):
+        pool = self._prefill_service_pool if stage == "prefill" else self._decode_service_pool
+        if len(pool) == 1:
+            return pool[0]["stub"], "service"
+        with self._service_pool_lock:
+            idx = self._service_pool_rr[stage]
+            self._service_pool_rr[stage] = (idx + 1) % len(pool)
+        return pool[idx]["stub"], f"service-pool-{idx}"
 
     def __init__(self, config):
         self._config = config
@@ -152,18 +228,27 @@ class GatewayServicer(inference_pb2_grpc.GatewayServiceServicer):
         prefill_target = f"{prefill_host}:{prefill_cfg['port']}"
         decode_target = f"{decode_host}:{decode_cfg['port']}"
 
-        self._prefill_channel = grpc.insecure_channel(prefill_target, options=_CHANNEL_OPTIONS)
-        self._decode_channel = grpc.insecure_channel(decode_target, options=_CHANNEL_OPTIONS)
+        gw_cfg = config["gateway"]
+        self._service_channel_pool_size = max(1, int(gw_cfg.get("service_channel_pool_size", 1)))
+        self._service_pool_lock = threading.Lock()
+        self._service_pool_rr = {"prefill": 0, "decode": 0}
 
-        # Wait for workers to be available (non-blocking fallback)
-        _wait_for_channel(self._prefill_channel, prefill_target, timeout=30)
-        _wait_for_channel(self._decode_channel, decode_target, timeout=30)
+        self._prefill_service_pool = self._build_service_pool(
+            "prefill", prefill_target, self._service_channel_pool_size,
+        )
+        self._decode_service_pool = self._build_service_pool(
+            "decode", decode_target, self._service_channel_pool_size,
+        )
+        self._prefill_channel = self._prefill_service_pool[0]["channel"]
+        self._decode_channel = self._decode_service_pool[0]["channel"]
+        self._prefill_stub = self._prefill_service_pool[0]["stub"]
+        self._decode_stub = self._decode_service_pool[0]["stub"]
+        logger.info(
+            "Connected to prefill=%s decode=%s (service_channel_pool_size=%d)",
+            prefill_target, decode_target, self._service_channel_pool_size,
+        )
 
-        self._prefill_stub = inference_pb2_grpc.PrefillServiceStub(self._prefill_channel)
-        self._decode_stub = inference_pb2_grpc.DecodeServiceStub(self._decode_channel)
-        logger.info("Connected to prefill=%s decode=%s", prefill_target, decode_target)
-
-        self._timeout_ms = config["gateway"].get("request_timeout_ms", 30000)
+        self._timeout_ms = gw_cfg.get("request_timeout_ms", 30000)
         scaling_cfg = config.get("scaling", {})
         self._use_piggyback_metrics = bool(scaling_cfg.get("use_piggyback_metrics", False))
         self._piggyback_ttl_seconds = int(scaling_cfg.get("piggyback_ttl_seconds", 30))
@@ -183,6 +268,8 @@ class GatewayServicer(inference_pb2_grpc.GatewayServiceServicer):
             lb_cfg = config.get("gateway", {}).get("load_balancer", {})
             refresh_s = float(lb_cfg.get("refresh_interval_s", 5))
             metrics_timeout_s = float(lb_cfg.get("metrics_timeout_s", 1))
+            metrics_poll_interval_s = float(lb_cfg.get("metrics_poll_interval_s", 0.2))
+            metrics_stale_after_s = float(lb_cfg.get("metrics_stale_after_s", 1.0))
             prefill_lb_host = prefill_cfg.get("lb_host", "prefill-headless")
             decode_lb_host = decode_cfg.get("lb_host", "decode-headless")
             self._prefill_router = StagePodRouter(
@@ -191,6 +278,8 @@ class GatewayServicer(inference_pb2_grpc.GatewayServiceServicer):
                 port=prefill_cfg["port"],
                 metrics_timeout_s=metrics_timeout_s,
                 refresh_interval_s=refresh_s,
+                metrics_poll_interval_s=metrics_poll_interval_s,
+                metrics_stale_after_s=metrics_stale_after_s,
             )
             self._decode_router = StagePodRouter(
                 stage="decode",
@@ -198,10 +287,12 @@ class GatewayServicer(inference_pb2_grpc.GatewayServiceServicer):
                 port=decode_cfg["port"],
                 metrics_timeout_s=metrics_timeout_s,
                 refresh_interval_s=refresh_s,
+                metrics_poll_interval_s=metrics_poll_interval_s,
+                metrics_stale_after_s=metrics_stale_after_s,
             )
             logger.info(
-                "Pod-aware LB enabled prefill_host=%s decode_host=%s refresh=%.1fs",
-                prefill_lb_host, decode_lb_host, refresh_s,
+                "Pod-aware LB enabled prefill_host=%s decode_host=%s refresh=%.1fs poll=%.2fs stale=%.2fs",
+                prefill_lb_host, decode_lb_host, refresh_s, metrics_poll_interval_s, metrics_stale_after_s,
             )
 
         # Metrics tracking
@@ -280,6 +371,8 @@ class GatewayServicer(inference_pb2_grpc.GatewayServiceServicer):
                         "LB prefill picked pod=%s est_r=%.4fs tokens=%d",
                         picked_ip, picked_r if picked_r is not None else -1.0, len(token_ids),
                     )
+            else:
+                prefill_stub, prefill_target_used = self._pick_service_stub("prefill")
             try:
                 prefill_resp = prefill_stub.RunPrefill(
                     prefill_req, timeout=timeout_s, wait_for_ready=True,
@@ -287,7 +380,7 @@ class GatewayServicer(inference_pb2_grpc.GatewayServiceServicer):
             except grpc.RpcError:
                 if prefill_stub is self._prefill_stub:
                     raise
-                logger.warning("Prefill pod %s failed; fallback to service", prefill_target_used)
+                logger.warning("Prefill target %s failed; fallback to primary service channel", prefill_target_used)
                 prefill_resp = self._prefill_stub.RunPrefill(
                     prefill_req, timeout=timeout_s, wait_for_ready=True,
                 )
@@ -333,6 +426,8 @@ class GatewayServicer(inference_pb2_grpc.GatewayServiceServicer):
                         "LB decode picked pod=%s est_r=%.4fs request_tokens=%d",
                         picked_ip, picked_r if picked_r is not None else -1.0, max_tokens,
                     )
+            else:
+                decode_stub, decode_target_used = self._pick_service_stub("decode")
             try:
                 decode_iter = decode_stub.RunDecode(
                     decode_req, timeout=remaining_s, wait_for_ready=True,
@@ -340,7 +435,7 @@ class GatewayServicer(inference_pb2_grpc.GatewayServiceServicer):
             except grpc.RpcError:
                 if decode_stub is self._decode_stub:
                     raise
-                logger.warning("Decode pod %s failed; fallback to service", decode_target_used)
+                logger.warning("Decode target %s failed; fallback to primary service channel", decode_target_used)
                 decode_iter = self._decode_stub.RunDecode(
                     decode_req, timeout=remaining_s, wait_for_ready=True,
                 )

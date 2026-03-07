@@ -1,0 +1,8 @@
+total_logged_requests=240
+pods_with_traffic=1
+pods_total=4
+max_single_pod_share=100.00%
+decode-d95fd4f5b-8cmzp: 0
+decode-d95fd4f5b-k6s48: 0
+decode-d95fd4f5b-lgkw2: 0
+decode-d95fd4f5b-shm4n: 240

@@ -1,0 +1,5 @@
+NAME                     READY   STATUS    RESTARTS   AGE   IP             NODE                                                        NOMINATED NODE   READINESS GATES
+decode-d95fd4f5b-8cmzp   1/1     Running   0          39h   10.244.0.117   node0.elasticinference.kkprojects-pg0.clemson.cloudlab.us   <none>           <none>
+decode-d95fd4f5b-k6s48   1/1     Running   0          14m   10.244.1.173   node1.elasticinference.kkprojects-pg0.clemson.cloudlab.us   <none>           <none>
+decode-d95fd4f5b-lgkw2   1/1     Running   0          39h   10.244.1.167   node1.elasticinference.kkprojects-pg0.clemson.cloudlab.us   <none>           <none>
+decode-d95fd4f5b-shm4n   1/1     Running   0          14m   10.244.2.106   node2.elasticinference.kkprojects-pg0.clemson.cloudlab.us   <none>           <none>

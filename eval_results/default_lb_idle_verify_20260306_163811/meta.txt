@@ -1,0 +1,3 @@
+gateway_pod=gateway-867879cfb6-cj2w7
+start_iso=2026-03-06T23:38:11Z
+end_iso=2026-03-06T23:39:36Z

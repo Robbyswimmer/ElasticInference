@@ -1,0 +1,4 @@
+mode,pod,count
+custom_lb_poolgw,gateway-66db6b4d59-5fzvh,200
+custom_lb_poolgw,gateway-66db6b4d59-lzsdr,0
+custom_lb_poolgw,gateway-66db6b4d59-tkmjh,0

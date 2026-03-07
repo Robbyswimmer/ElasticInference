@@ -1,0 +1,1 @@
+RESULT mode=fairlb2 N=200 ok=200 err=0 gw_ips=3 stubs=6 avg_s=1.191 avg_total_ms=1188.6 avg_decode_ms=913.0 duration_s=67.5

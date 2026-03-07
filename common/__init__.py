@@ -48,6 +48,7 @@ def load_config(path=None):
         "MODEL_NAME":   ("model", "name"),
         "LOG_LEVEL":    ("logging", "level"),
         "GATEWAY_PORT": ("gateway", "port", _cast_int_env),
+        "GATEWAY_SERVICE_CHANNEL_POOL_SIZE": ("gateway", "service_channel_pool_size", _cast_int_env),
         "PREFILL_HOST": ("prefill", "connect_host"),
         "PREFILL_PORT": ("prefill", "port", _cast_int_env),
         "DECODE_HOST":  ("decode", "connect_host"),
