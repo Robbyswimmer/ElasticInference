@@ -15,7 +15,7 @@ def test_load_default_config():
     assert config["gateway"]["port"] == 50051
     assert config["prefill"]["port"] == 50052
     assert config["decode"]["port"] == 50053
-    assert config["redis"]["host"] == "localhost"
+    assert config["redis"]["host"] == "redis"
     assert config["redis"]["ttl_seconds"] == 300
 
 

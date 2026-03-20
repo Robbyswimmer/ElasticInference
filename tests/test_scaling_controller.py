@@ -71,9 +71,9 @@ class TestScalingController:
     @patch("scaling.controller.subprocess.run")
     def test_scale_respects_max(self, mock_run, controller):
         mock_run.return_value = MagicMock(returncode=0)
-        controller._stages["prefill"]["current_replicas"] = 3
-        controller._scale("prefill", 10)  # max is 4
-        assert controller._stages["prefill"]["current_replicas"] == 4
+        controller._stages["prefill"]["current_replicas"] = 1
+        controller._scale("prefill", 10)  # max is 2
+        assert controller._stages["prefill"]["current_replicas"] == 2
 
     @patch("scaling.controller.subprocess.run")
     def test_scale_respects_min(self, mock_run, controller):
@@ -89,17 +89,18 @@ class TestScalingController:
         mock_run.assert_not_called()
 
     def test_ema_smoothing(self, controller):
-        alpha = controller._ema_alpha  # 0.3
+        alpha = controller._ema_alpha  # 0.18
         stage = controller._stages["prefill"]
         stage["ema_load"] = 0.0
 
         # Simulate load = 1.0
         stage["ema_load"] = alpha * 1.0 + (1 - alpha) * 0.0
-        assert abs(stage["ema_load"] - 0.3) < 0.01
+        assert abs(stage["ema_load"] - alpha) < 0.01
 
         # Another reading of 1.0
         stage["ema_load"] = alpha * 1.0 + (1 - alpha) * stage["ema_load"]
-        assert abs(stage["ema_load"] - 0.51) < 0.01
+        expected = alpha + (1 - alpha) * alpha  # 0.18 + 0.82*0.18 = 0.3276
+        assert abs(stage["ema_load"] - expected) < 0.01
 
     def test_step_scales_up_on_high_load(self, controller):
         import time as _time
